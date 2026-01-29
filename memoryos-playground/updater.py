@@ -1,4 +1,5 @@
 try:
+    # 尝试相对导入核心模块和工具
     from .utils import (
         generate_id, get_timestamp, 
         gpt_generate_multi_summary, check_conversation_continuity, generate_page_meta_info, OpenAIClient,
@@ -8,6 +9,7 @@ try:
     from .mid_term import MidTermMemory
     from .long_term import LongTermMemory
 except ImportError:
+    # 回退到绝对导入
     from utils import (
         generate_id, get_timestamp, 
         gpt_generate_multi_summary, check_conversation_continuity, generate_page_meta_info, OpenAIClient,
@@ -19,7 +21,9 @@ except ImportError:
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 更新器类，负责短期记忆到中期记忆的流转逻辑，并维护对话连贯性
 class Updater:
+    # 初始化更新器
     def __init__(self, 
                  short_term_memory: ShortTermMemory, 
                  mid_term_memory: MidTermMemory, 
@@ -35,6 +39,7 @@ class Updater:
         self.last_evicted_page_for_continuity = None # Tracks the actual last page object for continuity checks
         self.llm_model = llm_model
 
+    # 处理单个页面的嵌入向量生成（关键词由 multi-summary 提供）
     def _process_page_embedding_and_keywords(self, page_data):
         """处理单个页面的embedding生成（关键词由multi-summary提供）"""
         page_id = page_data.get("page_id", generate_id("page"))
@@ -62,11 +67,13 @@ class Updater:
         
         return page_data
 
+    # 获取嵌入向量的辅助方法
     def _get_embedding_for_page(self, text):
         """获取页面embedding的辅助方法"""
         from .utils import get_embedding
         return get_embedding(text)
 
+    # 同步更新所有链接页面的元摘要信息
     def _update_linked_pages_meta_info(self, start_page_id, new_meta_info):
         """
         Updates meta_info for a chain of connected pages starting from start_page_id.
@@ -97,6 +104,7 @@ class Updater:
         if q: # If any pages were updated
             self.mid_term_memory.save() # Save mid-term memory after updates
 
+    # 处理短期记忆到中期记忆的整体流程
     def process_short_term_to_mid_term(self):
         evicted_qas = []
         while self.short_term_memory.is_full():
@@ -111,6 +119,7 @@ class Updater:
         print(f"Updater: Processing {len(evicted_qas)} QAs from short-term to mid-term.")
         
         # 1. Create page structures and handle continuity within the evicted batch
+        # 创建页面对象并检查批次内的连贯性
         current_batch_pages = []
         temp_last_page_in_batch = self.last_evicted_page_for_continuity # Carry over from previous batch if any
 
@@ -158,6 +167,7 @@ class Updater:
             self.last_evicted_page_for_continuity = current_batch_pages[-1]
 
         # 2. Consolidate text from current_batch_pages for multi-summary
+        # 汇总本批次文本并生成多主题摘要
         if not current_batch_pages:
             return
             
@@ -170,6 +180,7 @@ class Updater:
         multi_summary_result = gpt_generate_multi_summary(input_text_for_summary, self.client, model=self.llm_model)
         
         # 3. Insert pages into MidTermMemory based on summaries
+        # 基于摘要将页面插入中期记忆
         if multi_summary_result and multi_summary_result.get("summaries"):
             for summary_item in multi_summary_result["summaries"]:
                 theme_summary = summary_item.get("content", "General summary of recent interactions.")
@@ -206,6 +217,7 @@ class Updater:
         if current_batch_pages: # Save if any pages were processed
             self.mid_term_memory.save()
 
+    # 根据长期记忆分析结果更新用户、助手的个性与知识
     def update_long_term_from_analysis(self, user_id, profile_analysis_result):
         """
         Updates long-term memory based on the results of a personality/knowledge analysis.
@@ -236,4 +248,4 @@ class Updater:
                 if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
                     self.long_term_memory.add_assistant_knowledge(line.strip())
 
-        # LongTermMemory.save() is called by its add/update methods 
+        # LongTermMemory.save() is called by its add/update methods

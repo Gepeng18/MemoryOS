@@ -3,6 +3,7 @@ import os
 from memoryos import Memoryos
 
 # --- Basic Configuration ---
+# 演示基础配置
 USER_ID = "demo_user"
 ASSISTANT_ID = "demo_assistant"
 API_KEY = "sk-7VaFJuGM146a957c4E75T3BlBkFJb7232107783F41C29e00"  # Replace with your key
@@ -10,10 +11,12 @@ BASE_URL = "https://cn2us02.opapi.win/v1"  # Optional: if using a custom OpenAI 
 DATA_STORAGE_PATH = "./simple_demo_data"
 LLM_MODEL = "gpt-4o-mini"
 
+# Playground 目录下的简单演示
 def simple_demo():
     print("MemoryOS Simple Demo")
     
     # 1. Initialize MemoryOS
+    # 1. 初始化实例，指定缓存的嵌入模型路径
     print("Initializing MemoryOS...")
     try:
         memo = Memoryos(
@@ -36,6 +39,7 @@ def simple_demo():
         return
 
     # 2. Add some basic memories
+    # 2. 模拟添加一系列对话背景
     print("Adding some memories...")
     
     memo.add_memory(
@@ -79,7 +83,8 @@ def simple_demo():
         agent_response="Painting is such a creative hobby! Do you use oils, acrylics, or watercolors?"
     )
 
-     
+    # 提问并触发召回
+
     test_query = "What do you remember about my job?"
     print(f"User: {test_query}")
     
@@ -89,5 +94,6 @@ def simple_demo():
     
     print(f"Assistant: {response}")
 
+# 主入口
 if __name__ == "__main__":
     simple_demo()

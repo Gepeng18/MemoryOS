@@ -6,11 +6,13 @@ import heapq
 from datetime import datetime
 
 try:
+    # 尝试相对导入核心工具
     from .utils import (
         get_timestamp, generate_id, get_embedding, normalize_vector, 
         compute_time_decay, ensure_directory_exists, OpenAIClient
     )
 except ImportError:
+    # 回退到绝对导入
     from utils import (
         get_timestamp, generate_id, get_embedding, normalize_vector, 
         compute_time_decay, ensure_directory_exists, OpenAIClient
@@ -22,6 +24,7 @@ HEAT_BETA = 1.0
 HEAT_GAMMA = 1
 RECENCY_TAU_HOURS = 24 # For R_recency calculation in compute_segment_heat
 
+# 计算会话片段的热度，综合考虑访问频率、交互活跃度及时间衰减
 def compute_segment_heat(session, alpha=HEAT_ALPHA, beta=HEAT_BETA, gamma=HEAT_GAMMA, tau_hours=RECENCY_TAU_HOURS):
     N_visit = session.get("N_visit", 0)
     L_interaction = session.get("L_interaction", 0)
@@ -34,7 +37,9 @@ def compute_segment_heat(session, alpha=HEAT_ALPHA, beta=HEAT_BETA, gamma=HEAT_G
     session["R_recency"] = R_recency # Update session's recency factor
     return alpha * N_visit + beta * L_interaction + gamma * R_recency
 
+# 中期记忆类，管理对话片段（会话）及其语义搜索
 class MidTermMemory:
+    # 初始化中期记忆，设置容量并加载已有会话
     def __init__(self, file_path: str, client: OpenAIClient, max_capacity=2000, embedding_model_name: str = "all-MiniLM-L6-v2", embedding_model_kwargs: dict = None):
         self.file_path = file_path
         ensure_directory_exists(self.file_path)
@@ -48,6 +53,7 @@ class MidTermMemory:
         self.embedding_model_kwargs = embedding_model_kwargs if embedding_model_kwargs is not None else {}
         self.load()
 
+    # 通过 ID 查找页面信息
     def get_page_by_id(self, page_id):
         for session in self.sessions.values():
             for page in session.get("details", []):
@@ -55,6 +61,7 @@ class MidTermMemory:
                     return page
         return None
 
+    # 更新页面之间的链式前后关系
     def update_page_connections(self, prev_page_id, next_page_id):
         if prev_page_id:
             prev_page = self.get_page_by_id(prev_page_id)
@@ -66,6 +73,7 @@ class MidTermMemory:
                 next_page["pre_page"] = prev_page_id
         # self.save() # Avoid saving on every minor update; save at higher level operations
 
+    # 基于访问频率的 LFU 淘汰策略
     def evict_lfu(self):
         if not self.access_frequency or not self.sessions:
             return
@@ -98,6 +106,7 @@ class MidTermMemory:
         self.save()
         print(f"MidTermMemory: Evicted session {lfu_sid}.")
 
+    # 向中期记忆添加一个新的会话片段，并计算嵌入向量和初始热度
     def add_session(self, summary, details, summary_keywords=None):
         session_id = generate_id("session")
         summary_vec = get_embedding(
@@ -176,6 +185,7 @@ class MidTermMemory:
         self.save()
         return session_id
 
+    # 根据热度重新平衡/构建堆结构
     def rebuild_heap(self):
         self.heap = []
         for sid, session_data in self.sessions.items():
@@ -185,6 +195,7 @@ class MidTermMemory:
         # heapq.heapify(self.heap) # Not needed if pushing one by one
         # No save here, it's an internal operation often followed by other ops that save
 
+    # 尝试将新页面合并入最匹配的现有会话，若无则新建
     def insert_pages_into_session(self, summary_for_new_pages, keywords_for_new_pages, pages_to_insert, 
                                   similarity_threshold=0.6, keyword_similarity_alpha=1.0):
         if not self.sessions: # If no existing sessions, just add as a new one
@@ -276,6 +287,7 @@ class MidTermMemory:
             print(f"MidTermMemory: No suitable session to merge (best score {best_overall_score:.2f} < threshold {similarity_threshold}). Creating new session.")
             return self.add_session(summary_for_new_pages, pages_to_insert, keywords_for_new_pages)
 
+    # 在所有会话及其页面中进行多层召回检索
     def search_sessions(self, query_text, segment_similarity_threshold=0.1, page_similarity_threshold=0.1, 
                           top_k_sessions=5, keyword_alpha=1.0, recency_tau_search=3600):
         if not self.sessions:
@@ -332,7 +344,7 @@ class MidTermMemory:
                 for page in session.get("details", []):
                     page_embedding = np.array(page["page_embedding"], dtype=np.float32)
                     # page_keywords = set(page.get("page_keywords", []))
-                    
+
                     page_sim_score = float(np.dot(page_embedding, query_vec))
                     # Can also add keyword sim for pages if needed, but keeping it simpler for now
 
@@ -359,6 +371,7 @@ class MidTermMemory:
         # Sort final results by session_relevance_score
         return sorted(results, key=lambda x: x["session_relevance_score"], reverse=True)
 
+    # 将内存状态持久化到磁盘
     def save(self):
         # Make a copy for saving to avoid modifying heap during iteration if it happens
         # Though current heap is list of tuples, so direct modification risk is low
@@ -375,6 +388,7 @@ class MidTermMemory:
         except IOError as e:
             print(f"Error saving MidTermMemory to {self.file_path}: {e}")
 
+    # 从本地文件恢复中期记忆
     def load(self):
         try:
             with open(self.file_path, "r", encoding="utf-8") as f:
@@ -388,4 +402,4 @@ class MidTermMemory:
         except json.JSONDecodeError:
             print(f"MidTermMemory: Error decoding JSON from {self.file_path}. Initializing new memory.")
         except Exception as e:
-            print(f"MidTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.") 
+            print(f"MidTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.")

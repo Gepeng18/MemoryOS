@@ -8,6 +8,7 @@ try:
 except ImportError:
     from utils import get_timestamp, generate_id
 
+# 基于 ChromaDB 的存储提供者，用于替代 JSON 文件和 Faiss 索引，提供更好的性能和扩展性
 class ChromaStorageProvider:
     """
     ChromaDB-based storage provider that replaces JSON files and Faiss indexes.
@@ -71,6 +72,7 @@ class ChromaStorageProvider:
             "update_times": {}
         }
     
+    # 将所有元数据保存到磁盘。这是唯一写入元数据文件的方法。
     def save_all_metadata(self):
         """Saves all metadata to the JSON file. This should be the ONLY method that writes to the file."""
         try:
@@ -171,6 +173,7 @@ class ChromaStorageProvider:
 
                 self.mid_term_collection.add(embeddings=page_embeddings, metadatas=page_metadatas, ids=page_ids)
     
+    # 在 ChromaDB 中搜索相关的会话摘要
     def search_mid_term_sessions(self, query_embedding: List[float], top_k: int = 5) -> List[dict]:
         try:
             results = self.mid_term_collection.query(

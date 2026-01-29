@@ -8,16 +8,19 @@ import sys
 import os
 import json
 import time
+# 将当前目录添加到系统路径，确保能导入 memoryos 包
 sys.path.append('.')
 
 from memoryos import Memoryos
 
+# 主测试函数，模拟 30 轮旅游规划对话并测试记忆召回
 def main():
     print("=" * 60)
     print("🚀 MemoryOS Travel Planning Memory Test")
     print("=" * 60)
     
     # Create Memoryos instance
+    # 初始化 Memoryos 实例，针对测试场景配置各项容量和阈值
     memoryos = Memoryos(
         user_id='travel_user_test',
         openai_api_key='',
@@ -35,6 +38,7 @@ def main():
     print("📝 Phase 1: Adding 30 rounds of travel planning conversations...")
     
     # 30 rounds of rich travel planning conversations in English
+    # 定义 30 轮模拟对话，涵盖基础信息、行程偏好和深入需求
     conversations = [
         # Basic information and travel preferences (1-10)
         ("Hello, I want to plan a trip", "Hello! I'd be happy to help you plan your trip. Where would you like to travel?"),
@@ -74,6 +78,7 @@ def main():
     ]
     
     # Add conversations
+    # 循环向记忆系统添加对话，每 10 轮打印一次中期记忆的最大热度
     for i, (user_input, agent_response) in enumerate(conversations, 1):
         print(f"  [{i:2d}/{len(conversations)}] Adding conversation: {user_input[:40]}...")
         memoryos.add_memory(user_input, agent_response)
@@ -85,15 +90,19 @@ def main():
                 max_heat = max(session.get('H_segment', 0) for session in sessions.values())
                 print(f"    Current max heat: {max_heat:.2f}")
     
+    # 第 2 阶段：强制触发中期分析，将热点记忆固化至长期记忆
     print(f"\n🔥 Phase 2: Force triggering mid-term analysis...")
     memoryos.force_mid_term_analysis()
     
+    # 第 3 阶段：等待后台同步完成
     print(f"\n⏳ Phase 3: Waiting for system synchronization...")
     time.sleep(2)
     
+    # 第 4 阶段：执行问答测试，验证召回准确率
     print(f"\n🧠 Phase 4: Testing Memory System Query Response...")
     
     # Test queries based on previous conversations
+    # 定义 3 个测试问题及其预期召回的关键词
     test_queries = [
         {
             "query": "What's my name and what's my profession?",
@@ -119,6 +128,7 @@ def main():
     total_score = 0
     max_score = len(test_queries)
     
+    # 逐个运行测试问题
     for i, test_case in enumerate(test_queries, 1):
         print(f"\n📋 Test Query {i}: {test_case['description']}")
         print(f"Question: {test_case['query']}")
@@ -126,10 +136,12 @@ def main():
         
         try:
             # Get response from memory system
+            # 调用 get_response 结合多层级记忆生成回复
             response = memoryos.get_response(test_case['query'])
             print(f"System Response: {response}")
             
             # Check if expected keywords are in the response
+            # 统计回复中包含的预期关键词比例
             response_lower = response.lower()
             found_keywords = []
             missing_keywords = []
@@ -150,6 +162,7 @@ def main():
             print(f"🎯 Keyword match rate: {keyword_score:.1%}")
             
             # Determine if this test passed (>50% keyword match)
+            # 关键词匹配率超过 50% 即视为通过
             if keyword_score >= 0.5:
                 print(f"✅ Test {i}: PASSED")
                 total_score += 1
@@ -161,6 +174,7 @@ def main():
             print(f"❌ Test {i}: FAILED")
     
     # Final results
+    # 输出最终测试报告和性能评价
     print("\n" + "="*60)
     print("📊 FINAL TEST RESULTS")
     print("="*60)
@@ -172,6 +186,7 @@ def main():
     print(f"Test Theme: Japan Travel Planning")
     print(f"User Profile: Emily, 28-year-old graphic designer, loves cultural travel and photography")
     
+    # 评价等级：优秀、良好、待改进
     if success_rate >= 70:
         print("\n🎉 EXCELLENT! Memory system performed very well!")
         return True
@@ -182,9 +197,10 @@ def main():
         print("\n😞 NEEDS IMPROVEMENT! Memory system needs optimization!")
         return False
 
+# 脚本主入口，带结果状态反馈
 if __name__ == "__main__":
     success = main()
     if success:
         print("\n🎊 Congratulations! MemoryOS Travel Planning Memory Test Completed Successfully!")
     else:
-        print("\n🔧 Memory system needs further optimization.") 
+        print("\n🔧 Memory system needs further optimization.")

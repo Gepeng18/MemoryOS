@@ -3,6 +3,7 @@ import os
 from memoryos import Memoryos
 
 # --- Basic Configuration ---
+# MCP 内部测试配置
 USER_ID = "demo_user"
 ASSISTANT_ID = "demo_assistant"
 API_KEY = ""  # Replace with your key
@@ -10,10 +11,12 @@ BASE_URL = ""  # Optional: if using a custom OpenAI endpoint
 DATA_STORAGE_PATH = ""
 LLM_MODEL = "gpt-4o-mini"
 
+# MCP 目录下的简单演示
 def simple_demo():
     print("MemoryOS Simple Demo")
     
     # 1. Initialize MemoryOS
+    # 1. 初始化实例，测试基础功能
     print("Initializing MemoryOS...")
     try:
         memo = Memoryos(
@@ -35,6 +38,7 @@ def simple_demo():
         return
 
     # 2. Add some basic memories
+    # 2. 添加测试对话
     print("Adding some memories...")
     
     memo.add_memory(
@@ -42,6 +46,7 @@ def simple_demo():
         agent_response="Hello Tom! Nice to meet you. Data science is such an exciting field. What kind of data do you work with?"
     )
      
+    # 测试单次召回响应
     test_query = "What do you remember about my job?"
     print(f"User: {test_query}")
     
@@ -51,5 +56,6 @@ def simple_demo():
     
     print(f"Assistant: {response}")
 
+# 脚本入口
 if __name__ == "__main__":
     simple_demo()

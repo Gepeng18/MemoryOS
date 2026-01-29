@@ -25,11 +25,14 @@ except ImportError:
     from updater import Updater
     from retriever import Retriever
 
+# 触发个人资料/知识更新的热度阈值
 # Heat threshold for triggering profile/knowledge update from mid-term memory
 H_PROFILE_UPDATE_THRESHOLD = 5.0 
 DEFAULT_ASSISTANT_ID = "default_assistant_profile"
 
+# Memoryos 主类，负责协调存储、更新、检索和生成等核心模块
 class Memoryos:
+    # 初始化 Memoryos 实例
     def __init__(self, user_id: str, 
                  openai_api_key: str, 
                  data_storage_path: str,
@@ -70,6 +73,7 @@ class Memoryos:
         self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
         
         # Centralized Storage Provider
+        # 初始化 ChromaDB 存储提供者
         storage_path = os.path.join(self.data_storage_path, "chroma_storage")
         self.storage_provider = ChromaStorageProvider(
             path=storage_path, 
@@ -78,13 +82,16 @@ class Memoryos:
         )
 
         # Register save handler to be called on exit
+        # 注册退出时的保存处理器
         atexit.register(self.close)
 
         # Initialize Memory Modules with the shared storage provider
+        # 初始化短期记忆模块
         self.short_term_memory = ShortTermMemory(
             storage_provider=self.storage_provider,
             max_capacity=short_term_capacity
         )
+        # 初始化中期记忆模块
         self.mid_term_memory = MidTermMemory(
             storage_provider=self.storage_provider,
             user_id=self.user_id,
@@ -94,6 +101,7 @@ class Memoryos:
             embedding_model_kwargs=self.embedding_model_kwargs,
             llm_model=self.llm_model
         )
+        # 初始化用户长期记忆模块
         self.user_long_term_memory = LongTermMemory(
             storage_provider=self.storage_provider,
             llm_interface=self.client,
@@ -103,6 +111,7 @@ class Memoryos:
         )
 
         # Initialize Memory Module for Assistant Knowledge
+        # 初始化助手长期记忆模块
         self.assistant_long_term_memory = LongTermMemory(
             storage_provider=self.storage_provider,
             llm_interface=self.client,
@@ -112,6 +121,7 @@ class Memoryos:
         )
 
         # Initialize Orchestration Modules
+        # 初始化更新器模块
         self.updater = Updater(
             short_term_memory=self.short_term_memory, 
             mid_term_memory=self.mid_term_memory, 
@@ -120,6 +130,7 @@ class Memoryos:
             topic_similarity_threshold=mid_term_similarity_threshold,
             llm_model=self.llm_model
         )
+        # 初始化检索器模块
         self.retriever = Retriever(
             mid_term_memory=self.mid_term_memory,
             user_long_term_memory=self.user_long_term_memory,
@@ -129,12 +140,14 @@ class Memoryos:
         
         self.mid_term_heat_threshold = mid_term_heat_threshold
 
+    # 关闭实例并保存元数据
     def close(self):
         """Saves all metadata to disk. Registered with atexit to be called on script termination."""
         print("Memoryos: Process is terminating. Saving all metadata to disk...")
         self.storage_provider.save_all_metadata()
         print("Memoryos: Metadata saved successfully.")
 
+    # 如果满足热度阈值，则检查中期记忆中的热点片段并触发画像/知识更新
     def _trigger_profile_and_knowledge_update_if_needed(self):
         """
         Checks mid-term memory for hot segments and triggers profile/knowledge update if threshold is met.
@@ -169,15 +182,18 @@ class Memoryos:
                     [f"User: {p.get('user_input', '')}\nAssistant: {p.get('agent_response', '')}" for p in unanalyzed_pages]
                 )
 
+                # 并行子任务：更新用户画像
                 def task_update_profile():
                     print("Memoryos: Starting user profile update task...")
                     return self.user_long_term_memory.update_user_profile(self.user_id, conversation_str)
 
+                # 并行子任务：提取知识
                 def task_extract_knowledge():
                     print("Memoryos: Starting knowledge extraction task...")
                     # This function needs the raw conversation string from the hot pages
                     return self.user_long_term_memory.extract_knowledge_from_text(conversation_str)
 
+                # 并发执行画像更新和知识提取
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     future_profile = executor.submit(task_update_profile)
                     future_knowledge = executor.submit(task_extract_knowledge)
@@ -233,6 +249,7 @@ class Memoryos:
             # print(f"Memoryos: Top session {sid} heat ({current_heat:.2f}) below threshold. No profile update.")
             pass # No action if below threshold
 
+    # 向系统中添加新的问答对（记忆）
     def add_memory(self, user_input: str, agent_response: str, timestamp = None, meta_data = None):
         """
         Adds a new QA pair (memory) to the system.
@@ -257,6 +274,7 @@ class Memoryos:
         # After any memory addition that might impact mid-term, check for profile updates
         self._trigger_profile_and_knowledge_update_if_needed()
 
+    # 根据用户查询，结合记忆和上下文生成响应
     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data = None) -> str:
         """
         Generates a response to the user's query, incorporating memory and context.
@@ -371,14 +389,17 @@ class Memoryos:
         return response_content
 
     # --- Helper/Maintenance methods (optional additions) ---
+    # 获取用户画像详情
     def get_user_profile_summary(self) -> dict:
         """Retrieves the full user profile object."""
         profile = self.user_long_term_memory.get_user_profile(self.user_id)
         return profile or {}
 
+    # 获取助手知识详情
     def get_assistant_knowledge_summary(self) -> list:
         return self.assistant_long_term_memory.get_assistant_knowledge()
 
+    # 强制触发中期分析
     def force_mid_term_analysis(self):
         """Forces analysis of all unanalyzed pages in the hottest mid-term segment if heat is above 0.
            Useful for testing or manual triggering.
@@ -390,4 +411,4 @@ class Memoryos:
         self.mid_term_heat_threshold = original_threshold # Restore original threshold
 
     def __repr__(self):
-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>"

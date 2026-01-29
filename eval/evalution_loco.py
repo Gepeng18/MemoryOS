@@ -4,6 +4,7 @@ from typing import List, Dict
 from collections import defaultdict
 import statistics
 
+# 简单的分词函数
 def simple_tokenize(text: str) -> List[str]:
     """Simple tokenization function."""
     if not text:
@@ -15,6 +16,7 @@ def simple_tokenize(text: str) -> List[str]:
     tokens = re.findall(r'\b\w+\b', text)
     return tokens
 
+# 计算 F1 分数
 def calculate_f1(prediction: str, reference: str) -> float:
     """Calculate F1 score for prediction against reference."""
     # Tokenize both prediction and reference
@@ -35,12 +37,14 @@ def calculate_f1(prediction: str, reference: str) -> float:
         f1 = 0
     return f1
 
+# 从 JSON 加载数据
 def load_data(file_path: str) -> List[Dict]:
     """Load data from a JSON file."""
     with open(file_path, 'r', encoding='utf-8') as file:
         data = json.load(file)
     return data
 
+# 主评估程序：计算并输出每个类别的平均 F1
 def main(file_path: str):
     """Main function to calculate average F1 scores per category."""
     # Load data from file

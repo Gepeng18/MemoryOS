@@ -2,6 +2,11 @@
 This file stores all the prompts used by the Memoryos system.
 """
 
+# 生成系统响应的提示词（系统部分）
+# 翻译：作为一名具有优秀沟通习惯的沟通专家，你在以下对话中扮演{relationship}的角色。
+# 这里是你的一些独特个性特征和知识：{assistant_knowledge_text}
+# 用户画像：{meta_data_text}
+# 你的任务是生成符合这些特征并保持语气的回复。
 # Prompt for generating system response (from main_memoybank.py, generate_system_response_with_meta)
 GENERATE_SYSTEM_RESPONSE_SYSTEM_PROMPT = (
     "As a communication expert with outstanding communication habits, you embody the role of {relationship} throughout the following dialogues.\n"
@@ -11,6 +16,14 @@ GENERATE_SYSTEM_RESPONSE_SYSTEM_PROMPT = (
     "Your task is to generate responses that align with these traits and maintain the tone.\n"
 )
 
+# 生成系统响应的提示词（用户部分）
+# 翻译：<上下文> 根据你最近与用户的对话：{history_text}
+# <记忆> 与正在进行的对话相关的记忆是：{retrieval_text}
+# <用户特征> 在过去你与用户的对话过程中，你发现用户具有以下特征：{background}
+# 现在，请扮演{relationship}继续你与用户之间的对话。
+# 用户刚刚说：{query}
+# 请使用以下格式回答用户的陈述（最多30个词，必须使用英文）：
+# 在回答问题时，请务必检查所引用信息的时间戳是否与问题的时间范围匹配。
 GENERATE_SYSTEM_RESPONSE_USER_PROMPT = (
     "<CONTEXT>\n"
     "Drawing from your recent conversation with the user:\n"
@@ -70,12 +83,24 @@ SUMMARIZE_DIALOGS_SYSTEM_PROMPT = "You are an expert in summarizing dialogue top
 SUMMARIZE_DIALOGS_USER_PROMPT = "Please generate an concise topic summary based on the following conversation. Keep it to 2-3 short sentences maximum:\n{dialog_text}\nConcise Summary："
 
 # Prompt for multi-summary generation (from utils.py, gpt_generate_multi_summary)
+# 你是一个对话话题分析专家。请生成简明扼要的摘要。话题不得超过两个。尽可能保持简练。
 MULTI_SUMMARY_SYSTEM_PROMPT = "You are an expert in analyzing dialogue topics. Generate  concise summaries. No more than two topics. Be as brief as possible."
+# 请分析以下对话并生成极其简练的子话题摘要（如果适用），最多两个主题。
+# 每个摘要都应非常简短——仅需寥寥数语描述主题和内容。
+# 格式化为 JSON 数组：\n[\n {{"theme": "简短主题", "keywords": ["关键词1", "关键词2"], "content": "摘要内容"}}\n]\n\n
+# 对话内容：\n{text}
 MULTI_SUMMARY_USER_PROMPT = ("Please analyze the following dialogue and generate extremely concise subtopic summaries (if applicable), with a maximum of two themes.\n"
                            "Each summary should be very brief - just a few words for the theme and content. Format as JSON array:\n"
                            "[\n  {{\"theme\": \"Brief theme\", \"keywords\": [\"key1\", \"key2\"], \"content\": \"summary\"}}\n]\n"
                            "\nConversation content:\n{text}")
 
+# 性格分析提示词（系统部分）
+# 翻译：你是一个专业的用户偏好分析助手。你的任务是从给定的对话中根据提供的维度分析用户的性格偏好。
+# 对于每个维度：
+# 1. 仔细阅读对话并确定是否反映了该维度。
+# 2. 如果反映了，确定用户的偏好级别：高 / 中 / 低，并简要解释推理，尽可能包括时间、人物和背景。
+# 3. 如果未反映该维度，请勿提取或列出它。
+# 性格分析部分仅关注用户的偏好和特征。仅输出用户画像部分。
 # Prompt for personality analysis (NEW TEMPLATE)
 PERSONALITY_ANALYSIS_SYSTEM_PROMPT = """You are a professional user preference analysis assistant. Your task is to analyze the user's personality preferences from the given dialogue based on the provided dimensions.
 
@@ -167,6 +192,12 @@ Practicality: Preference for practical advice vs. theoretical discussion.
 **Updated User Profile:**
 Please provide the comprehensive updated user profile below, combining insights from both the existing profile and new conversation:"""
 
+# 知识提取提示词（系统部分）
+# 翻译：你是一个知识提取助手。你的任务是从对话中提取用户隐私数据和助手知识。
+# 重点关注：
+# 1. 用户隐私数据：个人信息、偏好或关于用户的私人事实。
+# 2. 助手知识：关于助手做了什么、提供了什么或演示了什么的明确陈述。
+# 提取时请做到极度简明且符合事实。使用尽可能短的短语。
 # Prompt for knowledge extraction (NEW)
 KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT = """You are a knowledge extraction assistant. Your task is to extract user private data and assistant knowledge from conversations.
 
@@ -206,7 +237,13 @@ EXTRACT_THEME_USER_PROMPT = "Please extract the main theme from the following te
 
 
 # Prompt for conversation continuity check (from dynamic_update.py, _is_conversation_continuing)
+# 你是一个对话连续性检测器。仅返回 true或 false”。
 CONTINUITY_CHECK_SYSTEM_PROMPT = "You are a conversation continuity detector. Return ONLY 'true' or 'false'."
+# 判断这两个对话页面是否具有连续性（即属于真实的延续，且没有话题偏移）。\n
+# 仅返回 \”true\ 或 \”false\。\n\n
+# 上一页：\n用户：{prev_user}\n助手：{prev_agent}\n\n
+# 当前页：\n用户：{curr_user}\n助手：{curr_agent}\n\n
+# 是否连续？”
 CONTINUITY_CHECK_USER_PROMPT = ("Determine if these two conversation pages are continuous (true continuation without topic shift).\n"
                                 "Return ONLY \"true\" or \"false\".\n\n"
                                 "Previous Page:\nUser: {prev_user}\nAssistant: {prev_agent}\n\n"

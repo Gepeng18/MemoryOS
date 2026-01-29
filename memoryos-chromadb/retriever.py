@@ -4,18 +4,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 try:
+    # 尝试相对导入核心模块和工具函数
     from .utils import get_timestamp, OpenAIClient, run_parallel_tasks
     from .short_term import ShortTermMemory
     from .mid_term import MidTermMemory
     from .long_term import LongTermMemory
 except ImportError:
+    # 回退到绝对导入
     from utils import get_timestamp, OpenAIClient, run_parallel_tasks
     from short_term import ShortTermMemory
     from mid_term import MidTermMemory
     from long_term import LongTermMemory
 # from .updater import Updater # Updater is not directly used by Retriever
 
+# 检索器类，负责从不同的记忆层并发检索相关上下文
 class Retriever:
+    # 初始化检索器
     def __init__(self, 
                  mid_term_memory: MidTermMemory, 
                  user_long_term_memory: LongTermMemory, 
@@ -31,6 +35,7 @@ class Retriever:
         self.retrieval_queue_capacity = queue_capacity
         # self.retrieval_queue = deque(maxlen=queue_capacity) # This was instance level, but retrieve returns it, so maybe not needed as instance var
 
+    # 并行子任务：从中级记忆中检索相关的对话页面
     def _retrieve_mid_term_context(self, user_query, segment_similarity_threshold, page_similarity_threshold, top_k_sessions):
         """并行任务：从中期记忆检索"""
         print("Retriever: Searching mid-term memory...")
@@ -67,6 +72,7 @@ class Retriever:
         print(f"Retriever: Mid-term memory recalled {len(retrieved_pages)} pages.")
         return retrieved_pages
 
+    # 并行子任务：从用户长期知识库中检索相关条目
     def _retrieve_user_knowledge(self, user_query, knowledge_threshold, top_k_knowledge):
         """并行任务：从用户长期知识检索"""
         print("Retriever: Searching user long-term knowledge...")
@@ -81,6 +87,7 @@ class Retriever:
         print(f"Retriever: Long-term user knowledge recalled {len(filtered_results)} items.")
         return filtered_results
 
+    # 并行子任务：从助手长期知识库中检索相关条目
     def _retrieve_assistant_knowledge(self, user_query, knowledge_threshold, top_k_knowledge):
         """并行任务：从助手长期知识检索"""
         if not self.assistant_long_term_memory:
@@ -99,6 +106,7 @@ class Retriever:
         print(f"Retriever: Long-term assistant knowledge recalled {len(filtered_results)} items.")
         return filtered_results
 
+    # 主检索方法，并发执行三个检索任务，并整合结果返回
     def retrieve_context(self, user_query: str, 
                          user_id: str, # Needed for profile, can be used for context filtering if desired
                          segment_similarity_threshold=0.1,  # From main_memoybank example
@@ -138,4 +146,4 @@ class Retriever:
             "retrieved_user_knowledge": retrieved_user_knowledge or [], # List of knowledge entry dicts
             "retrieved_assistant_knowledge": retrieved_assistant_knowledge or [], # List of assistant knowledge entry dicts
             "retrieved_at": get_timestamp()
-        } 
+        }

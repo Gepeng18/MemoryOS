@@ -15,6 +15,7 @@ except ImportError:
     from long_term import LongTermMemory
 # from .updater import Updater # Updater is not directly used by Retriever
 
+# 检索器类，负责从不同的记忆层（中期、长期）并发检索相关上下文
 class Retriever:
     def __init__(self, 
                  mid_term_memory: MidTermMemory, 
@@ -89,6 +90,7 @@ class Retriever:
         print(f"Retriever: Long-term assistant knowledge recalled {len(retrieved_knowledge)} items.")
         return retrieved_knowledge
 
+    # 主检索方法，并发执行三个检索任务，并整合结果返回
     def retrieve_context(self, user_query: str, 
                          user_id: str, # Needed for profile, can be used for context filtering if desired
                          segment_similarity_threshold=0.1,  # From main_memoybank example

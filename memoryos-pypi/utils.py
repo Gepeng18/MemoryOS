@@ -33,6 +33,7 @@ def clean_reasoning_model_output(text):
     
     return cleaned_text
 
+# OpenAI 客户端类，封装了常用的聊天补全和并行处理功能
 # ---- OpenAI Client ----
 class OpenAIClient:
     def __init__(self, api_key, base_url=None, max_workers=5):
@@ -139,6 +140,7 @@ def _get_valid_kwargs(func, kwargs):
         # Fallback for functions/methods where signature inspection is not straightforward
         return kwargs
 
+# 获取文本的嵌入向量，支持 SentenceTransformer 和 BGE-M3 等模型
 def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs):
     """
     获取文本的embedding向量。
@@ -263,6 +265,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
     return {"input": text, "summaries": summaries}
 
 
+# 分析并更新用户个性画像
 def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini", existing_user_profile="None"):
     """
     Analyze and update user personality profile from dialogs

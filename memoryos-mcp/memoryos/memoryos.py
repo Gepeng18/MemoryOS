@@ -22,11 +22,14 @@ except ImportError:
     from updater import Updater
     from retriever import Retriever
 
+# 触发个人资料/知识更新的热度阈值
 # Heat threshold for triggering profile/knowledge update from mid-term memory
 H_PROFILE_UPDATE_THRESHOLD = 5.0 
 DEFAULT_ASSISTANT_ID = "default_assistant_profile"
 
+# Memoryos 主类，负责协调存储、更新、检索和生成等核心模块
 class Memoryos:
+    # 初始化 Memoryos 实例
     def __init__(self, user_id: str, 
                  openai_api_key: str, 
                  data_storage_path: str,
@@ -83,6 +86,7 @@ class Memoryos:
         ensure_directory_exists(user_long_term_path)
         ensure_directory_exists(assistant_long_term_path)
 
+        # 初始化用户的各个记忆模块（短期、中期、长期）
         # Initialize Memory Modules for User
         self.short_term_memory = ShortTermMemory(file_path=user_short_term_path, max_capacity=short_term_capacity)
         self.mid_term_memory = MidTermMemory(
@@ -107,6 +111,7 @@ class Memoryos:
             embedding_model_kwargs=self.embedding_model_kwargs
         )
 
+        # 初始化编排模块（更新器和检索器）
         # Initialize Orchestration Modules
         self.updater = Updater(short_term_memory=self.short_term_memory, 
                                mid_term_memory=self.mid_term_memory, 
@@ -123,6 +128,7 @@ class Memoryos:
         
         self.mid_term_heat_threshold = mid_term_heat_threshold
 
+    # 如果满足热度阈值，则检查中期记忆中的热点片段并触发画像/知识更新
     def _trigger_profile_and_knowledge_update_if_needed(self):
         """
         Checks mid-term memory for hot segments and triggers profile/knowledge update if threshold is met.
@@ -150,6 +156,7 @@ class Memoryos:
             if unanalyzed_pages:
                 print(f"Memoryos: Mid-term session {sid} heat ({current_heat:.2f}) exceeded threshold. Analyzing {len(unanalyzed_pages)} pages for profile/knowledge update.")
                 
+                # 并行执行两个LLM任务：用户画像分析（已包含更新）、知识提取
                 # 并行执行两个LLM任务：用户画像分析（已包含更新）、知识提取
                 def task_user_profile_analysis():
                     print("Memoryos: Starting parallel user profile analysis and update...")
@@ -219,6 +226,7 @@ class Memoryos:
             # print(f"Memoryos: Top session {sid} heat ({current_heat:.2f}) below threshold. No profile update.")
             pass # No action if below threshold
 
+    # 向系统中添加新的问答对（记忆）
     def add_memory(self, user_input: str, agent_response: str, timestamp: str = None, meta_data: dict = None):
         """
         Adds a new QA pair (memory) to the system.
@@ -243,6 +251,7 @@ class Memoryos:
         # After any memory addition that might impact mid-term, check for profile updates
         self._trigger_profile_and_knowledge_update_if_needed()
 
+    # 根据用户查询，结合记忆和上下文生成响应
     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
         """
         Generates a response to the user's query, incorporating memory and context.
@@ -359,4 +368,4 @@ class Memoryos:
         self.mid_term_heat_threshold = original_threshold # Restore original threshold
 
     def __repr__(self):
-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>"

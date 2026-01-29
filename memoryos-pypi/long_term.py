@@ -7,6 +7,7 @@ try:
 except ImportError:
     from utils import get_timestamp, get_embedding, normalize_vector, ensure_directory_exists
 
+# 长期记忆类，负责管理用户画像、用户私人知识库以及助手知识库
 class LongTermMemory:
     def __init__(self, file_path, knowledge_capacity=100, embedding_model_name: str = "all-MiniLM-L6-v2", embedding_model_kwargs: dict = None):
         self.file_path = file_path
@@ -21,6 +22,7 @@ class LongTermMemory:
         self.embedding_model_kwargs = embedding_model_kwargs if embedding_model_kwargs is not None else {}
         self.load()
 
+    # 更新指定用户的个性画像
     def update_user_profile(self, user_id, new_data, merge=True):
         if merge and user_id in self.user_profiles and self.user_profiles[user_id].get("data"): # Check if data exists
             current_data = self.user_profiles[user_id]["data"]
@@ -45,6 +47,7 @@ class LongTermMemory:
     def get_user_profile_data(self, user_id):
         return self.user_profiles.get(user_id, {})
 
+    # 添加一条知识条目到指定的知识队列中，并计算其嵌入向量
     def add_knowledge_entry(self, knowledge_text, knowledge_deque: deque, type_name="knowledge"):
         if not knowledge_text or knowledge_text.strip().lower() in ["", "none", "- none", "- none."]:
             print(f"LongTermMemory: Empty {type_name} received, not saving.")
@@ -78,6 +81,7 @@ class LongTermMemory:
     def get_assistant_knowledge(self):
         return list(self.assistant_knowledge)
 
+    # 在指定的知识队列中搜索与查询最相关的条目
     def _search_knowledge_deque(self, query, knowledge_deque: deque, threshold=0.1, top_k=5):
         if not knowledge_deque:
             return []

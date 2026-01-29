@@ -3,11 +3,15 @@ import numpy as np
 import faiss
 from collections import deque
 try:
+    # 尝试相对导入核心工具
     from .utils import get_timestamp, get_embedding, normalize_vector, ensure_directory_exists
 except ImportError:
+    # 回退到绝对导入
     from utils import get_timestamp, get_embedding, normalize_vector, ensure_directory_exists
 
+# 长期记忆类，负责用户画像、私人知识和助手知识的持久化与检索
 class LongTermMemory:
+    # 初始化长期记忆模块，配置容量并加载本地数据
     def __init__(self, file_path, knowledge_capacity=100, embedding_model_name: str = "all-MiniLM-L6-v2", embedding_model_kwargs: dict = None):
         self.file_path = file_path
         ensure_directory_exists(self.file_path)
@@ -21,6 +25,7 @@ class LongTermMemory:
         self.embedding_model_kwargs = embedding_model_kwargs if embedding_model_kwargs is not None else {}
         self.load()
 
+    # 更新用户画像，支持合并或覆盖模式
     def update_user_profile(self, user_id, new_data, merge=True):
         if merge and user_id in self.user_profiles and self.user_profiles[user_id].get("data"): # Check if data exists
             current_data = self.user_profiles[user_id]["data"]
@@ -39,12 +44,15 @@ class LongTermMemory:
         print(f"LongTermMemory: Updated user profile for {user_id} (merge={merge}).")
         self.save()
 
+    # 获取用户的原始画像文本
     def get_raw_user_profile(self, user_id):
         return self.user_profiles.get(user_id, {}).get("data", "None") # Return "None" string if not found
 
+    # 获取包含元数据的完整用户画像数据
     def get_user_profile_data(self, user_id):
         return self.user_profiles.get(user_id, {})
 
+    # 添加单条知识条目并计算其向量表示
     def add_knowledge_entry(self, knowledge_text, knowledge_deque: deque, type_name="knowledge"):
         if not knowledge_text or knowledge_text.strip().lower() in ["", "none", "- none", "- none."]:
             print(f"LongTermMemory: Empty {type_name} received, not saving.")
@@ -66,18 +74,23 @@ class LongTermMemory:
         print(f"LongTermMemory: Added {type_name}. Current count: {len(knowledge_deque)}.")
         self.save()
 
+    # 添加用户私人知识
     def add_user_knowledge(self, knowledge_text):
         self.add_knowledge_entry(knowledge_text, self.knowledge_base, "user knowledge")
 
+    # 添加助手特有知识
     def add_assistant_knowledge(self, knowledge_text):
         self.add_knowledge_entry(knowledge_text, self.assistant_knowledge, "assistant knowledge")
 
+    # 获取用户知识列表
     def get_user_knowledge(self):
         return list(self.knowledge_base)
 
+    # 获取助手知识列表
     def get_assistant_knowledge(self):
         return list(self.assistant_knowledge)
 
+    # 在给定的知识队列中执行向量相似度搜索
     def _search_knowledge_deque(self, query, knowledge_deque: deque, threshold=0.1, top_k=5):
         if not knowledge_deque:
             return []
@@ -127,16 +140,19 @@ class LongTermMemory:
         results.sort(key=lambda x: float(np.dot(np.array(x["knowledge_embedding"], dtype=np.float32), query_vec)), reverse=True)
         return results
 
+    # 搜索用户私人知识
     def search_user_knowledge(self, query, threshold=0.1, top_k=5):
         results = self._search_knowledge_deque(query, self.knowledge_base, threshold, top_k)
         print(f"LongTermMemory: Searched user knowledge for '{query[:30]}...'. Found {len(results)} matches.")
         return results
 
+    # 搜索助手特有知识
     def search_assistant_knowledge(self, query, threshold=0.1, top_k=5):
         results = self._search_knowledge_deque(query, self.assistant_knowledge, threshold, top_k)
         print(f"LongTermMemory: Searched assistant knowledge for '{query[:30]}...'. Found {len(results)} matches.")
         return results
 
+    # 持久化所有长期记忆数据
     def save(self):
         data = {
             "user_profiles": self.user_profiles,
@@ -149,6 +165,7 @@ class LongTermMemory:
         except IOError as e:
             print(f"Error saving LongTermMemory to {self.file_path}: {e}")
 
+    # 从磁盘恢复长期记忆数据
     def load(self):
         try:
             with open(self.file_path, "r", encoding="utf-8") as f:
@@ -167,4 +184,4 @@ class LongTermMemory:
         except json.JSONDecodeError:
             print(f"LongTermMemory: Error decoding JSON from {self.file_path}. Initializing new memory.")
         except Exception as e:
-             print(f"LongTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.") 
+             print(f"LongTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.")

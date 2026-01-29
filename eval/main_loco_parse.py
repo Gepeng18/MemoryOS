@@ -11,6 +11,7 @@ import openai
 import time
 import tiktoken
 import os
+# 总 token 消耗和样本数量统计
 total_tokens = 0
 num_samples=0
 # Initialize OpenAI client
@@ -20,8 +21,10 @@ client = OpenAIClient(
 )
 
 # Heat threshold
+# 触发更新的热度阈值
 H_THRESHOLD = 5.0
 
+# 如果热度超过阈值，从堆顶的中期记忆片段中更新用户画像
 def update_user_profile_from_top_segment(mid_mem, long_mem, sample_id, client):
     """
     Update user profile if heat exceeds threshold and extract assistant knowledge.
@@ -44,11 +47,13 @@ def update_user_profile_from_top_segment(mid_mem, long_mem, sample_id, client):
             
             old_profile = long_mem.get_raw_user_profile(sample_id)
             
+            # 调用性格分析 LLM 任务
             result = gpt_personality_analysis(un_analyzed, client)
             new_profile = result["profile"]
             new_private = result["private"]
             assistant_knowledge = result["assistant_knowledge"]
             
+            # 合并新旧画像
             if old_profile:
                 updated_profile = gpt_update_profile(old_profile, new_profile, client)
             else:
@@ -66,6 +71,7 @@ def update_user_profile_from_top_segment(mid_mem, long_mem, sample_id, client):
             if assistant_knowledge and assistant_knowledge != "None":
                 long_mem.add_assistant_knowledge(assistant_knowledge)
             
+            # 重置分析标志和热度贡献
             for p in session["details"]:
                 p["analyzed"] = True
             session["N_visit"] = 0
@@ -77,6 +83,7 @@ def update_user_profile_from_top_segment(mid_mem, long_mem, sample_id, client):
             mid_mem.save()
             print(f"Update complete: Segment {sid} heat has been reset.")
 
+# 结合检索到的记忆和元数据生成最终回复
 def generate_system_response_with_meta(query, short_mem, long_mem, retrieval_queue, long_konwledge, client, sample_id, speaker_a, speaker_b, meta_data):
     """
     Generate system response with speaker roles clearly defined.
@@ -107,6 +114,7 @@ def generate_system_response_with_meta(query, short_mem, long_mem, retrieval_que
     #meta_data_text = f"【Conversation Meta Data】\n{json.dumps(meta_data, ensure_ascii=False, indent=2)}\n\n"
     assistant_knowledge_text = re.sub(r'\bI\b', speaker_b, assistant_knowledge_text)
     
+    # 构造系统和用户提示词
     system_prompt = (
         f"You are role-playing as {speaker_b} in a conversation with the user is playing is  {speaker_a}. "
         f"Here are some of your character traits and knowledge:\n{assistant_knowledge_text}\n"
@@ -141,6 +149,7 @@ def generate_system_response_with_meta(query, short_mem, long_mem, retrieval_que
     response = client.chat_completion(model="gpt-4o-mini", messages=messages, temperature=0.7, max_tokens=2000)
     return response, system_prompt, user_prompt
 
+# 将 LoCoMo 格式的对话转换成记忆系统的格式
 def process_conversation(conversation_data):
     """
     Process conversation data from locomo10 format into memory system format.
@@ -184,6 +193,7 @@ def process_conversation(conversation_data):
     
     return processed
 
+# 评估脚本主入口：加载 LoCoMo 数据集、进行检索与答案生成，并保存结果
 def main():
     # 直接处理整个数据集，不需要命令行参数
     print("开始处理整个locomo10数据集...")

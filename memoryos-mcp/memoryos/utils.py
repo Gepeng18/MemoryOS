@@ -8,13 +8,16 @@ import os
 import inspect
 from functools import wraps
 try:
+    # 尝试相对导入 prompts 模块
     from . import prompts # 尝试相对导入
 except ImportError:
+    # 回退到绝对导入
     import prompts # 回退到绝对导入
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
+# 清理推理模型输出中的 <think> 标签，适配如 DeepSeek R1 等模型的思维链输出格式
 def clean_reasoning_model_output(text):
     """
     清理推理模型输出中的<think>标签
@@ -33,8 +36,10 @@ def clean_reasoning_model_output(text):
     
     return cleaned_text
 
+# OpenAI 客户端类，封装了常用的聊天补全和并行处理功能
 # ---- OpenAI Client ----
 class OpenAIClient:
+    # 初始化 OpenAI 客户端，配置 API Key、Base URL 和线程池
     def __init__(self, api_key, base_url=None, max_workers=5):
         self.api_key = api_key
         self.base_url = base_url if base_url else "https://api.openai.com/v1"
@@ -45,6 +50,7 @@ class OpenAIClient:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
 
+    # 执行单次聊天补全请求
     def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
         print(f"Calling OpenAI API. Model: {model}")
         try:
@@ -63,10 +69,12 @@ class OpenAIClient:
             # Fallback or error handling
             return "Error: Could not get response from LLM."
 
+    # 异步版本的聊天补全
     def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
         """异步版本的chat_completion"""
         return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
 
+    # 并行处理多个 LLM 请求
     def batch_chat_completion(self, requests):
         """
         并行处理多个LLM请求
@@ -93,10 +101,12 @@ class OpenAIClient:
         
         return results
 
+    # 关闭线程池
     def shutdown(self):
         """关闭线程池"""
         self.executor.shutdown(wait=True)
 
+# 并行执行任务列表的工具函数
 # ---- Parallel Processing Utilities ----
 def run_parallel_tasks(tasks, max_workers=3):
     """
@@ -115,20 +125,25 @@ def run_parallel_tasks(tasks, max_workers=3):
                 results.append(None)
         return results
 
+# 获取当前时间戳字符串
 # ---- Basic Utilities ----
 def get_timestamp():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+# 生成带有特定前缀的唯一 ID
 def generate_id(prefix="id"):
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
+# 确保给定路径的父目录存在
 def ensure_directory_exists(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
+# 嵌入向量工具函数，支持本地模型和缓存
 # ---- Embedding Utilities ----
 _model_cache = {}
 _embedding_cache = {}  # 添加embedding缓存
 
+# 过滤掉不属于函数签名的多余参数
 def _get_valid_kwargs(func, kwargs):
     """Helper to filter kwargs for a given function's signature."""
     try:
@@ -139,6 +154,7 @@ def _get_valid_kwargs(func, kwargs):
         # Fallback for functions/methods where signature inspection is not straightforward
         return kwargs
 
+# 获取文本的嵌入向量，支持 SentenceTransformer 和 BGE-M3 等模型
 def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs):
     """
     获取文本的embedding向量。
@@ -156,11 +172,13 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
     """
     model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
     
+    # 检查缓存
     if use_cache:
         cache_key = f"{model_config_key}::{hash(text)}"
         if cache_key in _embedding_cache:
             return _embedding_cache[cache_key]
     
+    # 加载模型
     # --- Model Loading ---
     model_init_key = json.dumps({"model_name": model_name, **{k:v for k,v in kwargs.items() if k not in ['batch_size', 'max_length']}}, sort_keys=True)
     if model_init_key not in _model_cache:
@@ -184,6 +202,7 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
             
     model = _model_cache[model_init_key]
     
+    # 执行向量化编码
     # --- Encoding ---
     embedding = None
     if 'bge-m3' in model_name.lower():
@@ -196,6 +215,7 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
         print(f"-> Encoding with SentenceTransformer using kwargs: {encode_kwargs}")
         embedding = model.encode([text], **encode_kwargs)[0]
 
+    # 存入缓存并管理缓存大小
     if use_cache:
         cache_key = f"{model_config_key}::{hash(text)}"
         _embedding_cache[cache_key] = embedding
@@ -211,12 +231,14 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
     return embedding
 
 
+# 清空嵌入向量缓存
 def clear_embedding_cache():
     """清空embedding缓存"""
     global _embedding_cache
     _embedding_cache.clear()
     print("Embedding cache cleared")
 
+# 对向量进行 L2 归一化
 def normalize_vector(vec):
     vec = np.array(vec, dtype=np.float32)
     norm = np.linalg.norm(vec)
@@ -224,6 +246,7 @@ def normalize_vector(vec):
         return vec
     return vec / norm
 
+# 计算时间衰减系数，用于记忆的热度计算
 # ---- Time Decay Function ----
 def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24):
     from datetime import datetime
@@ -232,13 +255,16 @@ def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24)
         t_event = datetime.strptime(event_timestamp_str, fmt)
         t_current = datetime.strptime(current_timestamp_str, fmt)
         delta_hours = (t_current - t_event).total_seconds() / 3600.0
+        # 使用指数衰减公式
         return np.exp(-delta_hours / tau_hours)
     except ValueError: # Handle cases where timestamp might be invalid
         return 0.1 # Default low recency
 
 
+# 基于 LLM 的实用函数
 # ---- LLM-based Utility Functions ----
 
+# 使用 LLM 为对话生成对话主题摘要
 def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
     dialog_text = "\n".join([f"User: {d.get('user_input','')} Assistant: {d.get('agent_response','')}" for d in dialogs])
     messages = [
@@ -248,6 +274,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
     print("Calling LLM to generate topic summary...")
     return client.chat_completion(model=model, messages=messages)
 
+# 使用 LLM 为一段文本生成多主题摘要（含关键词）
 def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.MULTI_SUMMARY_SYSTEM_PROMPT},
@@ -263,6 +290,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
     return {"input": text, "summaries": summaries}
 
 
+# 分析并更新用户个性画像
 def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini", existing_user_profile="None"):
     """
     Analyze and update user personality profile from dialogs
@@ -281,6 +309,7 @@ def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini"
     return result_text.strip() if result_text else "None"
 
 
+# 从对话中提取用户私人数据和助手知识
 def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
     """Extract user private data and assistant knowledge from dialogs"""
     conversation = "\n".join([f"User: {d.get('user_input','')} (Timestamp: {d.get('timestamp', '')})\nAssistant: {d.get('agent_response','')} (Timestamp: {d.get('timestamp', '')})" for d in dialogs])
@@ -296,6 +325,7 @@ def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini")
     private_data = "None"
     assistant_knowledge = "None"
 
+    # 解析 LLM 返回的文本格式，提取特定部分
     try:
         if "【User Private Data】" in result_text:
             private_data_start = result_text.find("【User Private Data】") + len("【User Private Data】")
@@ -321,6 +351,7 @@ def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini")
 
 
 # Keep the old function for backward compatibility, but mark as deprecated
+# 已弃用的性格分析函数，仅为保持向后兼容性
 def gpt_personality_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini", known_user_traits="None"):
     """
     DEPRECATED: Use gpt_user_profile_analysis and gpt_knowledge_extraction instead.
@@ -337,6 +368,7 @@ def gpt_personality_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini",
     }
 
 
+# 使用 LLM 将新分析结果合并到旧画像中
 def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.UPDATE_PROFILE_SYSTEM_PROMPT},
@@ -345,6 +377,7 @@ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="g
     print("Calling LLM to update user profile...")
     return client.chat_completion(model=model, messages=messages)
 
+# 使用 LLM 从回答文本中提取主旨
 def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.EXTRACT_THEME_SYSTEM_PROMPT},
@@ -353,6 +386,7 @@ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
     print("Calling LLM to extract theme...")
     return client.chat_completion(model=model, messages=messages)
 
+# 使用 LLM 提取关键词
 def llm_extract_keywords(text, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.EXTRACT_KEYWORDS_SYSTEM_PROMPT},
@@ -362,6 +396,7 @@ def llm_extract_keywords(text, client: OpenAIClient, model="gpt-4o-mini"):
     response = client.chat_completion(model=model, messages=messages)
     return [kw.strip() for kw in response.split(',') if kw.strip()]
 
+# 检查当前对话与前一页对话是否属于同一个连贯话题
 # ---- Functions from dynamic_update.py (to be used by Updater class) ----
 def check_conversation_continuity(previous_page, current_page, client: OpenAIClient, model="gpt-4o-mini"):
     prev_user = previous_page.get("user_input", "") if previous_page else ""
@@ -380,6 +415,7 @@ def check_conversation_continuity(previous_page, current_page, client: OpenAICli
     response = client.chat_completion(model=model, messages=messages, temperature=0.0, max_tokens=10)
     return response.strip().lower() == "true"
 
+# 为页面生成元摘要（meta_info），并考虑之前的元摘要内容
 def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
     current_conversation = f"User: {current_page.get('user_input', '')}\nAssistant: {current_page.get('agent_response', '')}"
     user_prompt = prompts.META_INFO_USER_PROMPT.format(
@@ -390,4 +426,4 @@ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, 
         {"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt}
     ]
-    return client.chat_completion(model=model, messages=messages, temperature=0.3, max_tokens=100).strip() 
+    return client.chat_completion(model=model, messages=messages, temperature=0.3, max_tokens=100).strip()

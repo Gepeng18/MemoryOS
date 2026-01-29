@@ -22,11 +22,14 @@ except ImportError:
     from updater import Updater
     from retriever import Retriever
 
+# 触发从中期记忆更新个人资料/知识的热度阈值
 # Heat threshold for triggering profile/knowledge update from mid-term memory
 H_PROFILE_UPDATE_THRESHOLD = 5.0 
 DEFAULT_ASSISTANT_ID = "default_assistant_profile"
 
+# Memoryos 主类，负责协调存储、更新、检索和生成等核心模块
 class Memoryos:
+    # 初始化 Memoryos 实例
     def __init__(self, user_id: str, 
                  openai_api_key: str, 
                  data_storage_path: str,
@@ -49,6 +52,7 @@ class Memoryos:
         self.mid_term_similarity_threshold = mid_term_similarity_threshold
         self.embedding_model_name = embedding_model_name
         
+        # 为嵌入模型参数设置智能默认值
         # Smart defaults for embedding_model_kwargs
         if embedding_model_kwargs is None:
             if 'bge-m3' in self.embedding_model_name.lower():
@@ -64,25 +68,31 @@ class Memoryos:
         print(f"Using unified LLM model: {self.llm_model}")
         print(f"Using embedding model: {self.embedding_model_name} with kwargs: {self.embedding_model_kwargs}")
 
+        # 初始化 OpenAI 客户端
         # Initialize OpenAI Client
         self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
 
+        # 定义用户特定数据的文件路径
         # Define file paths for user-specific data
         self.user_data_dir = os.path.join(self.data_storage_path, "users", self.user_id)
         user_short_term_path = os.path.join(self.user_data_dir, "short_term.json")
         user_mid_term_path = os.path.join(self.user_data_dir, "mid_term.json")
+        # 用户画像及其知识库路径
         user_long_term_path = os.path.join(self.user_data_dir, "long_term_user.json") # User profile and their knowledge
 
+        # 定义助手特定数据（知识库）的文件路径
         # Define file paths for assistant-specific data (knowledge)
         self.assistant_data_dir = os.path.join(self.data_storage_path, "assistants", self.assistant_id)
         assistant_long_term_path = os.path.join(self.assistant_data_dir, "long_term_assistant.json")
 
+        # 确保数据目录存在
         # Ensure directories exist
         ensure_directory_exists(user_short_term_path) # ensure_directory_exists operates on the file path, creating parent dirs
         ensure_directory_exists(user_mid_term_path)
         ensure_directory_exists(user_long_term_path)
         ensure_directory_exists(assistant_long_term_path)
 
+        # 初始化用户的各个记忆模块（短期、中期、长期）
         # Initialize Memory Modules for User
         self.short_term_memory = ShortTermMemory(file_path=user_short_term_path, max_capacity=short_term_capacity)
         self.mid_term_memory = MidTermMemory(
@@ -99,6 +109,7 @@ class Memoryos:
             embedding_model_kwargs=self.embedding_model_kwargs
         )
 
+        # 初始化助手长期知识记忆模块
         # Initialize Memory Module for Assistant Knowledge
         self.assistant_long_term_memory = LongTermMemory(
             file_path=assistant_long_term_path, 
@@ -107,9 +118,11 @@ class Memoryos:
             embedding_model_kwargs=self.embedding_model_kwargs
         )
 
+        # 初始化编排模块（更新器和检索器）
         # Initialize Orchestration Modules
         self.updater = Updater(short_term_memory=self.short_term_memory, 
                                mid_term_memory=self.mid_term_memory, 
+                               # 更新器主要更新用户的长期记忆画像/知识
                                long_term_memory=self.user_long_term_memory, # Updater primarily updates user's LTM profile/knowledge
                                client=self.client,
                                topic_similarity_threshold=mid_term_similarity_threshold,  # 传递中期记忆相似度阈值
@@ -117,12 +130,14 @@ class Memoryos:
         self.retriever = Retriever(
             mid_term_memory=self.mid_term_memory,
             long_term_memory=self.user_long_term_memory,
+            # 传递助手长期记忆引用
             assistant_long_term_memory=self.assistant_long_term_memory, # Pass assistant LTM
             queue_capacity=retrieval_queue_capacity
         )
         
         self.mid_term_heat_threshold = mid_term_heat_threshold
 
+    # 如果满足热度阈值，则检查中期记忆中的热点片段并触发画像/知识更新
     def _trigger_profile_and_knowledge_update_if_needed(self):
         """
         Checks mid-term memory for hot segments and triggers profile/knowledge update if threshold is met.
@@ -132,6 +147,7 @@ class Memoryos:
         if not self.mid_term_memory.heap:
             return
 
+        # 查看堆顶（热度最高的片段）
         # Peek at the top of the heap (hottest segment)
         # MidTermMemory heap stores (-H_segment, sid)
         neg_heat, sid = self.mid_term_memory.heap[0] 
@@ -140,9 +156,11 @@ class Memoryos:
         if current_heat >= self.mid_term_heat_threshold:
             session = self.mid_term_memory.sessions.get(sid)
             if not session:
+                # 如果会话已丢失，则清理堆
                 self.mid_term_memory.rebuild_heap() # Clean up if session is gone
                 return
 
+            # 获取该热点会话中未分析的页面
             # Get unanalyzed pages from this hot session
             # A page is a dict: {"user_input": ..., "agent_response": ..., "timestamp": ..., "analyzed": False, ...}
             unanalyzed_pages = [p for p in session.get("details", []) if not p.get("analyzed", False)]
@@ -154,10 +172,12 @@ class Memoryos:
                 def task_user_profile_analysis():
                     print("Memoryos: Starting parallel user profile analysis and update...")
                     # 获取现有用户画像
+                    # 获取现有用户画像
                     existing_profile = self.user_long_term_memory.get_raw_user_profile(self.user_id)
                     if not existing_profile or existing_profile.lower() == "none":
                         existing_profile = "No existing profile data."
                     
+                    # 直接输出更新后的完整画像
                     # 直接输出更新后的完整画像
                     return gpt_user_profile_analysis(unanalyzed_pages, self.client, model=self.llm_model, existing_user_profile=existing_profile)
                 
@@ -165,14 +185,18 @@ class Memoryos:
                     print("Memoryos: Starting parallel knowledge extraction...")
                     return gpt_knowledge_extraction(unanalyzed_pages, self.client, model=self.llm_model)
                 
+                # 使用并行任务执行
                 # 使用并行任务执行                
                 with ThreadPoolExecutor(max_workers=2) as executor:
+                    # 提交两个主要任务：画像分析和知识提取
                     # 提交两个主要任务
                     future_profile = executor.submit(task_user_profile_analysis)
                     future_knowledge = executor.submit(task_knowledge_extraction)
                     
+                    # 等待并行任务执行结果
                     # 等待结果
                     try:
+                        # 获取分析后的完整用户画像
                         updated_user_profile = future_profile.result()  # 直接是更新后的完整画像
                         knowledge_result = future_knowledge.result()
                     except Exception as e:
@@ -182,34 +206,46 @@ class Memoryos:
                 new_user_private_knowledge = knowledge_result.get("private")
                 new_assistant_knowledge = knowledge_result.get("assistant_knowledge")
 
+                # 如果【画像分析结果】有效，则更新用户长期记忆中的画像
                 # 直接使用更新后的完整用户画像
                 if updated_user_profile and updated_user_profile.lower() != "none":
                     print("Memoryos: Updating user profile with integrated analysis...")
+                    # 直接替换为新的完整画像
                     self.user_long_term_memory.update_user_profile(self.user_id, updated_user_profile, merge=False)  # 直接替换为新的完整画像
                 
+                # 将提取的【用户私人知识】添加到用户长期记忆中
                 # Add User Private Knowledge to user's LTM
                 if new_user_private_knowledge and new_user_private_knowledge.lower() != "none":
                     for line in new_user_private_knowledge.split('\n'):
                          if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
                             self.user_long_term_memory.add_user_knowledge(line.strip())
 
+                # 将提取的【助手知识】添加到助手长期记忆中
                 # Add Assistant Knowledge to assistant's LTM
                 if new_assistant_knowledge and new_assistant_knowledge.lower() != "none":
                     for line in new_assistant_knowledge.split('\n'):
                         if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
+                           # 保存到专用的助手长期记忆模块
                            self.assistant_long_term_memory.add_assistant_knowledge(line.strip()) # Save to dedicated assistant LTM
 
+                # 将页面标记为已分析，并重置会话的热度贡献因素
                 # Mark pages as analyzed and reset session heat contributors
                 for p in session["details"]:
+                    # 标记会话中的页面为已分析
                     p["analyzed"] = True # Mark all pages in session, or just unanalyzed_pages?
                                           # Original code marked all pages in session
                 
+                # 分析后重置访问次数
                 session["N_visit"] = 0 # Reset visits after analysis
+                # 重置交互长度贡献
                 session["L_interaction"] = 0 # Reset interaction length contribution
                 # session["R_recency"] = 1.0 # Recency will re-calculate naturally
+                # 根据重置后的因素重新计算热度
                 session["H_segment"] = compute_segment_heat(session) # Recompute heat with reset factors
+                # 更新最后访问时间
                 session["last_visit_time"] = get_timestamp() # Update last visit time
                 
+                # 由于热度改变，需要重新构建堆
                 self.mid_term_memory.rebuild_heap() # Heap needs rebuild due to H_segment change
                 self.mid_term_memory.save()
                 print(f"Memoryos: Profile/Knowledge update for session {sid} complete. Heat reset.")
@@ -219,6 +255,7 @@ class Memoryos:
             # print(f"Memoryos: Top session {sid} heat ({current_heat:.2f}) below threshold. No profile update.")
             pass # No action if below threshold
 
+    # 向系统中添加新的问答对（记忆）
     def add_memory(self, user_input: str, agent_response: str, timestamp: str = None, meta_data: dict = None):
         """
         Adds a new QA pair (memory) to the system.
@@ -233,22 +270,27 @@ class Memoryos:
             "timestamp": timestamp
             # meta_data can be added here if it needs to be stored with the QA pair
         }
+        # 添加到短期记忆
         self.short_term_memory.add_qa_pair(qa_pair)
         print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
 
+        # 如果短期记忆已满，则处理并移至中期记忆
         if self.short_term_memory.is_full():
             print("Memoryos: Short-term memory full. Processing to mid-term.")
             self.updater.process_short_term_to_mid_term()
         
+        # 添加可能影响中期记忆的记忆后，检查是否需要更新画像
         # After any memory addition that might impact mid-term, check for profile updates
         self._trigger_profile_and_knowledge_update_if_needed()
 
+    # 根据用户查询，结合记忆和上下文生成响应
     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
         """
         Generates a response to the user's query, incorporating memory and context.
         """
         print(f"Memoryos: Generating response for query: '{query[:50]}...'")
 
+        # 1. 检索上下文信息
         # 1. Retrieve context
         retrieval_results = self.retriever.retrieve_context(
             user_query=query,
@@ -259,6 +301,7 @@ class Memoryos:
         retrieved_user_knowledge = retrieval_results["retrieved_user_knowledge"]
         retrieved_assistant_knowledge = retrieval_results["retrieved_assistant_knowledge"]
 
+        # 2. 获取短期对话历史
         # 2. Get short-term history
         short_term_history = self.short_term_memory.get_all()
         history_text = "\n".join([
@@ -266,17 +309,20 @@ class Memoryos:
             for qa in short_term_history
         ])
 
+        # 3. 格式化检索到的中期记忆页面
         # 3. Format retrieved mid-term pages (retrieval_queue equivalent)
         retrieval_text = "\n".join([
             f"【Historical Memory】\nUser: {page.get('user_input', '')}\nAssistant: {page.get('agent_response', '')}\nTime: {page.get('timestamp', '')}\nConversation chain overview: {page.get('meta_info','N/A')}"
             for page in retrieved_pages
         ])
 
+        # 4. 获取用户画像
         # 4. Get user profile
         user_profile_text = self.user_long_term_memory.get_raw_user_profile(self.user_id)
         if not user_profile_text or user_profile_text.lower() == "none": 
             user_profile_text = "No detailed profile available yet."
 
+        # 5. 格式化检索到的用户知识作为背景信息
         # 5. Format retrieved user knowledge for background
         user_knowledge_background = ""
         if retrieved_user_knowledge:
@@ -286,6 +332,7 @@ class Memoryos:
         
         background_context = f"【User Profile】\n{user_profile_text}\n{user_knowledge_background}"
 
+        # 6. 格式化检索到的助手知识（来自助手长期记忆）
         # 6. Format retrieved Assistant Knowledge (from assistant's LTM)
         # Use retrieved assistant knowledge instead of all assistant knowledge
         assistant_knowledge_text_for_prompt = "【Assistant Knowledge Base】\n"
@@ -295,6 +342,7 @@ class Memoryos:
         else:
             assistant_knowledge_text_for_prompt += "- No relevant assistant knowledge found for this query.\n"
 
+        # 7. 格式化当前对话的元数据（如果提供）
         # 7. Format user_conversation_meta_data (if provided)
         meta_data_text_for_prompt = "【Current Conversation Metadata】\n"
         if user_conversation_meta_data:
@@ -305,7 +353,9 @@ class Memoryos:
         else:
             meta_data_text_for_prompt += "None provided for this turn."
 
+        # 8. 构建 Prompt（系统和用户提示词）
         # 8. Construct Prompts
+        # 使用 meta_data_text 占位符填充 user_conversation_meta_data
         system_prompt_text = prompts.GENERATE_SYSTEM_RESPONSE_SYSTEM_PROMPT.format(
             relationship=relationship_with_user,
             assistant_knowledge_text=assistant_knowledge_text_for_prompt,
@@ -325,6 +375,7 @@ class Memoryos:
             {"role": "user", "content": user_prompt_text}
         ]
 
+        # 9. 调用大语言模型生成最终响应
         # 9. Call LLM for response
         print("Memoryos: Calling LLM for final response generation...")
         # print("System Prompt:\n", system_prompt_text)
@@ -336,27 +387,33 @@ class Memoryos:
             max_tokens=1500 # As in original main
         )
         
+        # 10. 将本次交互添加到记忆系统中
         # 10. Add this interaction to memory
         self.add_memory(user_input=query, agent_response=response_content, timestamp=get_timestamp())
         
         return response_content
 
     # --- Helper/Maintenance methods (optional additions) ---
+    # 获取用户画像摘要
     def get_user_profile_summary(self) -> str:
         return self.user_long_term_memory.get_raw_user_profile(self.user_id)
 
+    # 获取助手知识摘要
     def get_assistant_knowledge_summary(self) -> list:
         return self.assistant_long_term_memory.get_assistant_knowledge()
 
+    # 如果热度大于 0，强制分析最热中期记忆片段中所有未分析的页面。适用于测试或手动触发。
     def force_mid_term_analysis(self):
         """Forces analysis of all unanalyzed pages in the hottest mid-term segment if heat is above 0.
            Useful for testing or manual triggering.
         """
+        # 临时降低阈值
         original_threshold = self.mid_term_heat_threshold
         self.mid_term_heat_threshold = 0.0 # Temporarily lower threshold
         print("Memoryos: Force-triggering mid-term analysis...")
         self._trigger_profile_and_knowledge_update_if_needed()
+        # 恢复原始阈值
         self.mid_term_heat_threshold = original_threshold # Restore original threshold
 
     def __repr__(self):
-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>"

@@ -4,21 +4,28 @@ import openai
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
+
+# 配置全局 GPT 客户端
 gpt_client = OpenAI(
         api_key='',
     base_url='https://cn2us02.opapi.win/v1'
 )
+
+# 获取标准格式的时间戳字符串
 def get_timestamp():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+# 生成带有特定前缀的唯一随机 ID
 def generate_id(prefix="id"):
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
+# 利用本地 SentenceTransformer 模型获取文本的嵌入向量
 def get_embedding(text, model_name="all-MiniLM-L6-v2"):
     model = SentenceTransformer(model_name)
     embedding = model.encode([text], convert_to_numpy=True)[0]
     return embedding
 
+# 对向量执行 L2 归一化，确保余弦相似度计算准确
 def normalize_vector(vec):
     vec = np.array(vec, dtype=np.float32)
     norm = np.linalg.norm(vec)
@@ -26,6 +33,7 @@ def normalize_vector(vec):
         return vec
     return vec / norm
 
+# OpenAI 客户端封装类
 class OpenAIClient:
     def __init__(self, api_key, base_url):
         self.api_key = api_key
@@ -33,6 +41,7 @@ class OpenAIClient:
         openai.api_key = self.api_key
         openai.api_base = self.base_url
 
+    # 执行对话补全请求并返回清洗后的文本内容
     def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
         print("调用 GPT 接口，模型:", model)
         response = gpt_client.chat.completions.create(
@@ -43,16 +52,20 @@ class OpenAIClient:
         )
         return response.choices[0].message.content.strip()
 
+# 统一生成回答的辅助函数
 def gpt_generate_answer(prompt, messages, client):
     return client.chat_completion(model="gpt-4o-mini", messages=messages, temperature=0.7, max_tokens=2000)
 
+# 从对话历史中提取关于助手的知识和特质
 def analyze_assistant_knowledge(dialogs, client):
     """
     Analyzes conversations to extract knowledge or identity traits about the assistant.
     Returns: {"assistant_knowledge": str}
     """
+    # 将对话列表转换为 LLM 可读的上下文文本
     conversation = "\n".join([f"User: {d['user_input']}\nAI: {d['agent_response']}\nTime:{d['timestamp']}\n" for d in dialogs])
 
+    # 定义提取助手知识的 Prompt（已包含 Few-shot 示例）
     prompt = """
 # Assistant Knowledge Extraction Task
 Analyze the conversation and extract any fact or identity traits about the assistant. 
@@ -99,9 +112,11 @@ Conversation:
     result = gpt_generate_answer(prompt, messages, client)
     
     # Parse output
+    # 清洗并返回解析后的知识字符串
     assistant_knowledge = result.replace("【Assistant Knowledge】", "").strip()
     return {"assistant_knowledge": assistant_knowledge}
 
+# 调用 GPT 对一段对话进行核心话题总结
 def gpt_summarize(dialogs, client):
     prompt = "Please generate a topic summary based on the following conversation：\n"
     for d in dialogs:
@@ -114,6 +129,7 @@ def gpt_summarize(dialogs, client):
     print("调用 GPT 生成主题摘要...")
     return gpt_generate_answer(prompt, messages, client)
 
+# 高级功能：调用 LLM 识别一段文本中的多个潜在话题并分别总结
 def gpt_generate_multi_summary(text, client):
     """
     调用 LLM 生成多子主题摘要，返回格式示例如下：
@@ -137,6 +153,7 @@ def gpt_generate_multi_summary(text, client):
     response_text = gpt_generate_answer(prompt, messages, client)
     import json
     try:
+        # 尝试解析结构化 JSON 返回
         summaries = json.loads(response_text)
     except Exception:
         summaries = []
@@ -235,14 +252,18 @@ def gpt_generate_multi_summary(text, client):
 #         "private": private.strip(),
 #         "assistant_knowledge": assistant_knowledge_result["assistant_knowledge"]
 #     }
+
+# 综合分析任务：同时从对话中提取性格画像、用户数据及助手知识
 def gpt_personality_analysis(dialogs, client):
     """
     Analyzes conversations to extract structured personality traits, general user data, 
     and assistant-related knowledge.
     Returns: {"profile": str, "user_data": str, "assistant_knowledge": str}
     """
+    # 构造上下文对话内容
     conversation = "\n".join([f"User: {d['user_input']}\nAssistant: {d['agent_response']}\nTime:{d['timestamp']}" for d in dialogs])
 
+    # 定义复杂的性格与数据分析指令
     prompt = """
 # Personality and User Data Analysis Task
 Analyze the conversation and output in EXACTLY this format:
@@ -287,9 +308,11 @@ Conversation:
     result = gpt_generate_answer(prompt, messages, client)
     
     # Parse output
+    # 拆分画像部分和用户事实数据部分
     profile, user_data = result.split("【User Data】") if "【User Data】" in result else (result, "None")
     
     # Analyze assistant knowledge
+    # 并行或顺序分析助手知识
     assistant_knowledge_result = analyze_assistant_knowledge(dialogs, client)
     
     return {
@@ -298,6 +321,7 @@ Conversation:
         "assistant_knowledge": assistant_knowledge_result["assistant_knowledge"]
     }
 
+# 动态合并逻辑：将最新对话的画像分析结果融合进历史存量的画像数据中
 def gpt_update_profile(old_profile, new_analysis, client):
     """
     Dynamically merges old and new profile data
@@ -307,6 +331,7 @@ def gpt_update_profile(old_profile, new_analysis, client):
     Returns:
         Merged profile text with conflict resolution
     """
+    # 定义画像合并与冲突解决指令
     prompt = f"""
 # Profile Merge Task
 Consolidate these profiles while:
@@ -349,6 +374,7 @@ The generated content should not exceed 1500 words
     print("Updating user profile dynamically...")
     return gpt_generate_answer(prompt, messages, client)
 
+# 从回答中总结提取核心主题标签
 def gpt_extract_theme(answer_text, client):
     prompt = f"请从以下回答中提取主题总结，并以【主题提取】：开头输出：\n{answer_text}\n"
     messages = [
@@ -358,6 +384,7 @@ def gpt_extract_theme(answer_text, client):
     print("调用 GPT 提取主题总结...")
     return gpt_generate_answer(prompt, messages, client)
 
+# 调用 LLM 提取对话中的核心关键词，限制数量以保证精确度
 def llm_extract_keywords(text, client):
     prompt = "Please extract the keywords of the conversation topic from the following dialogue, separated by commas, and do not exceed three:\n" + text
     messages = [
@@ -366,13 +393,16 @@ def llm_extract_keywords(text, client):
     ]
     print("调用 GPT 提取关键词...")
     keywords_text =gpt_generate_answer(prompt, messages, client)
+    # 按逗号切分并清洗
     keywords = [w.strip() for w in keywords_text.split(",") if w.strip()]
     return set(keywords)
 
+# 计算会话时间衰减系数，衡量记忆的时效性权重
 def compute_time_decay(session_timestamp, current_timestamp, tau=3600):
     from datetime import datetime
     fmt = "%Y-%m-%d %H:%M:%S"
     t1 = datetime.strptime(session_timestamp, fmt)
     t2 = datetime.strptime(current_timestamp, fmt)
     delta = (t2 - t1).total_seconds()
+    # 使用负指数衰减公式
     return np.exp(-delta/tau)

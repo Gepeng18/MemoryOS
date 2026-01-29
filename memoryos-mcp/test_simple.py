@@ -11,6 +11,7 @@ import json
 import sys
 from pathlib import Path
 
+# 导入 MCP 客户端相关组件
 # Import MCP client
 try:
     from mcp import ClientSession, StdioServerParameters
@@ -21,9 +22,11 @@ except ImportError as e:
     print("Please install official MCP SDK: pip install mcp")
     sys.exit(1)
 
+# MemoryOS MCP 服务器简易测试类
 class SimpleMemoryOSTest:
     """Simple MemoryOS MCP Server Test"""
     
+    # 初始化测试类，指定服务器脚本和配置文件
     def __init__(self, server_script: str = "server_new.py", config_file: str = "config.json"):
         self.server_script = Path(server_script)
         self.config_file = Path(config_file)
@@ -34,6 +37,7 @@ class SimpleMemoryOSTest:
         if not self.config_file.exists():
             raise FileNotFoundError(f"Config file not found: {self.config_file}")
     
+    # 获取启动服务器所需的 stdio 通信参数
     def get_server_params(self):
         """Get server parameters"""
         return StdioServerParameters(
@@ -42,6 +46,7 @@ class SimpleMemoryOSTest:
             env=None
         )
     
+    # 向 MemoryOS 连续插入 15 轮测试对话
     async def test_insert_conversations(self):
         """Insert 15 conversations into MemoryOS"""
         print("\n💾 Step 1: Insert 15 Conversations")
@@ -68,17 +73,20 @@ class SimpleMemoryOSTest:
         server_params = self.get_server_params()
         
         try:
+            # 建立 stdio 连接并初始化 MCP 会话
             async with stdio_client(server_params) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     
                     success_count = 0
                     
+                    # 循环调用 add_memory 工具
                     for i, conversation in enumerate(conversations, 1):
                         print(f"   Adding conversation {i:2d}/15...")
                         
                         result = await session.call_tool("add_memory", conversation)
                         
+                        # 解析工具返回结果
                         if hasattr(result, 'content') and result.content:
                             content = result.content[0]
                             if isinstance(content, types.TextContent):
@@ -103,6 +111,7 @@ class SimpleMemoryOSTest:
             print(f"❌ Failed to insert conversations: {e}")
             return False
     
+    # 通过查询验证记忆检索功能的有效性
     async def test_memory_retrieval(self):
         """Test memory retrieval with 2 specific queries"""
         print("\n🔍 Step 2: Test Memory Retrieval")
@@ -124,10 +133,12 @@ class SimpleMemoryOSTest:
         server_params = self.get_server_params()
         
         try:
+            # 启动服务器客户端
             async with stdio_client(server_params) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     
+                    # 执行测试查询
                     for i, test_query in enumerate(test_queries, 1):
                         print(f"\n--- Query {i}: {test_query['description']} ---")
                         print(f"Question: {test_query['query']}")
@@ -139,6 +150,7 @@ class SimpleMemoryOSTest:
                             "max_results": 10
                         }
                         
+                        # 调用 retrieve_memory 工具
                         result = await session.call_tool("retrieve_memory", query_params)
                         
                         if hasattr(result, 'content') and result.content:
@@ -149,6 +161,7 @@ class SimpleMemoryOSTest:
                                     print(f"✅ Query {i} successful!")
                                     
                                     # Display results
+                                    # 统计并打印各层记忆的命中数量
                                     pages_found = response.get('total_pages_found', 0)
                                     user_knowledge_found = response.get('total_user_knowledge_found', 0)
                                     assistant_knowledge_found = response.get('total_assistant_knowledge_found', 0)
@@ -171,6 +184,7 @@ class SimpleMemoryOSTest:
                                             print(f"      Agent: {agent_response}...")
                                     
                                     # Check if expected content is found
+                                    # 校验检索结果中是否包含预期的关键词
                                     full_text = json.dumps(response, ensure_ascii=False).lower()
                                     found_expected = []
                                     for expected in test_query['expected_content']:
@@ -183,6 +197,7 @@ class SimpleMemoryOSTest:
                                         print(f"⚠️ Expected content not found: {test_query['expected_content']}")
                                     
                                     # Check if first conversation is retrievable
+                                    # 特别验证第一轮对话是否已成功流转至中期记忆并可被召回
                                     if i == 1:  # First query about Tom
                                         if pages_found > 0 or "tom" in full_text:
                                             print("✅ First conversation successfully moved to mid-term memory and is retrievable!")
@@ -204,6 +219,7 @@ class SimpleMemoryOSTest:
             print(f"❌ Memory retrieval test failed: {e}")
             return False
     
+    # 执行完整的测试流程
     async def run_test(self):
         """Run the complete test"""
         print("🚀 Starting Simple MemoryOS MCP Server Test")
@@ -218,6 +234,7 @@ class SimpleMemoryOSTest:
             return False
         
         # Wait a bit for processing
+        # 等待一段时间让异步更新逻辑处理完毕
         print("\n⏳ Waiting 3 seconds for memory processing...")
         await asyncio.sleep(3)
         
@@ -241,6 +258,7 @@ class SimpleMemoryOSTest:
             print("⚠️ Some tests failed. Please check the system.")
             return False
 
+# 程序主入口，解析参数并运行异步测试
 def main():
     """Main function"""
     import argparse
@@ -249,6 +267,7 @@ def main():
     parser.add_argument("--server", default="server_new.py", help="Server script path")
     parser.add_argument("--config", default="config.json", help="Config file path")
     
+    # 解析命令行参数
     args = parser.parse_args()
     
     try:
@@ -259,10 +278,11 @@ def main():
         print("\n⚠️ Test interrupted by user")
         sys.exit(1)
     except Exception as e:
+        # 输出错误详情
         print(f"\n❌ Test failed with error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
-    main() 
+    main()

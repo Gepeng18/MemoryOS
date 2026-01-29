@@ -1,4 +1,5 @@
 try:
+    # 尝试相对导入核心模块和工具函数
     from .utils import (
         generate_id, get_timestamp, 
         gpt_generate_multi_summary, check_conversation_continuity, generate_page_meta_info, OpenAIClient,
@@ -8,6 +9,7 @@ try:
     from .mid_term import MidTermMemory
     from .long_term import LongTermMemory
 except ImportError:
+    # 回退到绝对导入
     from utils import (
         generate_id, get_timestamp, 
         gpt_generate_multi_summary, check_conversation_continuity, generate_page_meta_info, OpenAIClient,
@@ -19,7 +21,9 @@ except ImportError:
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 更新器类，负责将记忆在各层级之间流转与更新
 class Updater:
+    # 初始化更新器
     def __init__(self, 
                  short_term_memory: ShortTermMemory, 
                  mid_term_memory: MidTermMemory, 
@@ -35,6 +39,7 @@ class Updater:
         self.last_evicted_page_for_continuity = None
         self.llm_model = llm_model
 
+    # 并行处理单个页面的嵌入向量和关键词生成
     def _process_page_embedding_and_keywords(self, page_data):
         """并行处理单个页面的embedding和keywords生成"""
         page_id = page_data.get("page_id", generate_id("page"))
@@ -77,6 +82,7 @@ class Updater:
         
         return page_data
 
+    # 更新由 start_page_id 开始的一系列关联页面的元摘要
     def _update_linked_pages_meta_info(self, start_page_id, new_meta_info):
         """
         Updates meta_info for a chain of connected pages starting from start_page_id.
@@ -104,6 +110,7 @@ class Updater:
         if q:
             self.mid_term_memory.save()
 
+    # 处理短期记忆满额后的流转逻辑
     def process_short_term_to_mid_term(self):
         evicted_qas = []
         while self.short_term_memory.is_full():
@@ -203,6 +210,7 @@ class Updater:
         if current_batch_pages:
             self.mid_term_memory.save()
 
+    # 根据画像分析结果更新长期记忆
     def update_long_term_from_analysis(self, user_id, profile_analysis_result):
         """
         Updates long-term memory based on the results of a personality/knowledge analysis.

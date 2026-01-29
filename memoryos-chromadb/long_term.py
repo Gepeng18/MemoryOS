@@ -3,13 +3,18 @@ import numpy as np
 from typing import Optional, Dict, Any
 
 try:
+    # 尝试相对导入核心工具函数
     from .utils import get_timestamp, get_embedding, normalize_vector, OpenAIClient, gpt_user_profile_analysis, gpt_knowledge_extraction
+    # 尝试相对导入存储提供者
     from .storage_provider import ChromaStorageProvider
 except ImportError:
+    # 回退到绝对导入
     from utils import get_timestamp, get_embedding, normalize_vector, OpenAIClient, gpt_user_profile_analysis, gpt_knowledge_extraction
     from storage_provider import ChromaStorageProvider
 
+# 长期记忆类，使用 ChromaStorageProvider 管理用户画像和知识库
 class LongTermMemory:
+    # 初始化长期记忆
     def __init__(self, 
                  storage_provider: ChromaStorageProvider, 
                  llm_interface: OpenAIClient,
@@ -24,6 +29,7 @@ class LongTermMemory:
         self.embedding_model_kwargs = embedding_model_kwargs or {}
         self.llm_model = llm_model  # 保存模型名称
 
+    # 根据对话历史更新用户个性画像
     def update_user_profile(self, user_id: str, conversation_history: str) -> Optional[Dict[str, Any]]:
         """
         Generates a new user profile based on conversation history and updates it in storage.
@@ -43,9 +49,11 @@ class LongTermMemory:
             return updated_profile
         return None
 
+    # 获取指定用户的画像
     def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         return self.storage.get_user_profile(user_id)
 
+    # 向知识库添加知识条目（用户或助手类型）
     def add_knowledge(self, knowledge_text: str, knowledge_type: str = "user"):
         """
         Adds a knowledge entry (for user or assistant) to ChromaDB.
@@ -70,6 +78,7 @@ class LongTermMemory:
         
         self.storage.enforce_knowledge_capacity(knowledge_type, self.knowledge_capacity)
 
+    # 利用 LLM 从文本中提取结构化知识
     def extract_knowledge_from_text(self, text: str) -> Optional[Dict[str, Any]]:
         """
         Uses an LLM to extract structured knowledge from a block of text.
@@ -82,12 +91,15 @@ class LongTermMemory:
             model=self.llm_model  # 传递模型参数
         )
 
+    # 获取所有用户知识
     def get_user_knowledge(self) -> list:
         return self.storage.get_all_user_knowledge()
 
+    # 获取所有助手知识
     def get_assistant_knowledge(self) -> list:
         return self.storage.get_all_assistant_knowledge()
 
+    # 在知识库中搜索相关条目
     def search_knowledge(self, query: str, knowledge_type: str = "user", top_k=5) -> list:
         query_vec = get_embedding(
             query, 

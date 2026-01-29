@@ -8,13 +8,16 @@ import os
 import inspect
 from functools import wraps
 try:
+    # 尝试相对导入 prompts 模块
     from . import prompts # 尝试相对导入
 except ImportError:
+    # 回退到绝对导入
     import prompts # 回退到绝对导入
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
+# 清理推理模型输出中的 <think> 标签，适配思维链输出格式
 def clean_reasoning_model_output(text):
     """
     清理推理模型输出中的<think>标签
@@ -29,8 +32,10 @@ def clean_reasoning_model_output(text):
     
     return cleaned_text
 
+# OpenAI 客户端类，封装了补全和并行处理功能
 # ---- OpenAI Client ----
 class OpenAIClient:
+    # 初始化 OpenAI 客户端
     def __init__(self, api_key, base_url=None, max_workers=5):
         self.api_key = api_key
         self.base_url = base_url if base_url else "https://api.openai.com/v1"
@@ -38,6 +43,7 @@ class OpenAIClient:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
 
+    # 执行单次聊天补全请求
     def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
         print(f"Calling OpenAI API. Model: {model}")
         try:
@@ -54,17 +60,21 @@ class OpenAIClient:
             print(f"Error calling OpenAI API: {e}")
             return "Error: Could not get response from LLM."
 
+    # 异步版本的补全请求
     def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
         return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
 
+    # 并行处理多个 LLM 请求
     def batch_chat_completion(self, requests):
         futures = [self.chat_completion_async(**req) for req in requests]
         results = [future.result() for future in as_completed(futures)]
         return results
 
+    # 关闭线程池
     def shutdown(self):
         self.executor.shutdown(wait=True)
 
+# 并行执行任务列表的工具函数
 # ---- Parallel Processing Utilities ----
 def run_parallel_tasks(tasks, max_workers=3):
     """
@@ -83,20 +93,25 @@ def run_parallel_tasks(tasks, max_workers=3):
                 results.append(None)
         return results
 
+# 获取当前时间戳字符串
 # ---- Basic Utilities ----
 def get_timestamp():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+# 生成带有特定前缀的唯一 ID
 def generate_id(prefix="id"):
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
+# 确保目录存在
 def ensure_directory_exists(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
+# 嵌入向量工具函数
 # ---- Embedding Utilities ----
 _model_cache = {}
 _embedding_cache = {}
 
+# 过滤掉不属于函数签名的多余参数
 def _get_valid_kwargs(func, kwargs):
     try:
         sig = inspect.signature(func)
@@ -105,6 +120,7 @@ def _get_valid_kwargs(func, kwargs):
     except (ValueError, TypeError):
         return kwargs
 
+# 获取文本的嵌入向量，支持本地缓存
 def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs):
     model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
     
@@ -145,11 +161,13 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
     
     return embedding
 
+# 对向量进行 L2 归一化
 def normalize_vector(vec):
     vec = np.array(vec, dtype=np.float32)
     norm = np.linalg.norm(vec)
     return vec / norm if norm != 0 else vec
 
+# 计算时间衰减系数，用于记忆的热度计算
 # ---- Time Decay Function ----
 def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24):
     from datetime import datetime
@@ -162,6 +180,7 @@ def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24)
     except ValueError: # Handle cases where timestamp might be invalid
         return 0.1 # Default low recency
 
+# 基于 LLM 的对话摘要生成
 # ---- LLM-based Utility Functions ----
 
 def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
@@ -173,6 +192,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
     print("Calling LLM to generate topic summary...")
     return client.chat_completion(model=model, messages=messages)
 
+# 生成多主题摘要及其关键词
 def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.MULTI_SUMMARY_SYSTEM_PROMPT},
@@ -187,6 +207,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
         summaries = []
     return {"input": text, "summaries": summaries}
 
+# 利用多主题摘要分析提取关键词
 def extract_keywords_from_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
     """
     Extract keywords using multi-summary analysis instead of separate keyword extraction.
@@ -210,6 +231,7 @@ def extract_keywords_from_multi_summary(text, client: OpenAIClient, model="gpt-4
     
     return unique_keywords
 
+# 分析并更新用户个性画像
 def gpt_user_profile_analysis(conversation_str: str, client: OpenAIClient, model="gpt-4o-mini", existing_user_profile="None"):
     """
     Analyze and update user personality profile from a conversation string.
@@ -229,6 +251,7 @@ def gpt_user_profile_analysis(conversation_str: str, client: OpenAIClient, model
         print(f"Warning: User profile analysis did not return valid JSON. Content: {result_text}")
         return {"raw_text_profile": result_text}
 
+# 从对话字符串中提取用户隐私数据和助手知识
 def gpt_knowledge_extraction(conversation_str: str, client: OpenAIClient, model="gpt-4o-mini"):
     """Extract user private data and assistant knowledge from a conversation string"""
     messages = [
@@ -266,6 +289,7 @@ def gpt_knowledge_extraction(conversation_str: str, client: OpenAIClient, model=
         "assistant_knowledge": assistant_knowledge if assistant_knowledge else "None"
     }
 
+# 将新分析合并到旧画像中
 def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="gpt-4o-mini"):
     messages = [
         {"role": "system", "content": prompts.UPDATE_PROFILE_SYSTEM_PROMPT},
@@ -273,6 +297,7 @@ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="g
     ]
     return client.chat_completion(model=model, messages=messages)
 
+# 检查对话连贯性
 def check_conversation_continuity(previous_page, current_page, client: OpenAIClient, model="gpt-4o-mini"):
     if not previous_page or not current_page:
         return False
@@ -285,9 +310,11 @@ def check_conversation_continuity(previous_page, current_page, client: OpenAICli
     )
     messages = [{"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
     
+    # 设置 temperature 为 0.0 以获得确定的连贯性判断结果
     response = client.chat_completion(model, messages, temperature=0.0)
     return response.lower() == 'true'
 
+# 生成对话链的元摘要
 def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
     new_dialogue = f"User: {current_page.get('user_input', '')}\nAssistant: {current_page.get('agent_response', '')}"
     
@@ -297,4 +324,4 @@ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, 
     )
     messages = [{"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
     
-    return client.chat_completion(model, messages, temperature=0.3) 
+    return client.chat_completion(model, messages, temperature=0.3)

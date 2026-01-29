@@ -19,6 +19,7 @@ except ImportError:
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 更新器类，负责将记忆在短期、中期和长期层级之间流转与更新
 class Updater:
     def __init__(self, 
                  short_term_memory: ShortTermMemory, 
@@ -97,6 +98,7 @@ class Updater:
         if q: # If any pages were updated
             self.mid_term_memory.save() # Save mid-term memory after updates
 
+    # 处理短期记忆满额后的流转逻辑：将问答对处理为页面并整合进中期记忆
     def process_short_term_to_mid_term(self):
         evicted_qas = []
         while self.short_term_memory.is_full():
@@ -206,6 +208,7 @@ class Updater:
         if current_batch_pages: # Save if any pages were processed
             self.mid_term_memory.save()
 
+    # 根据画像分析结果（个性画像、私人知识、助手知识）更新长期记忆
     def update_long_term_from_analysis(self, user_id, profile_analysis_result):
         """
         Updates long-term memory based on the results of a personality/knowledge analysis.

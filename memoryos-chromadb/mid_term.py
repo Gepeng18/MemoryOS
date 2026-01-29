@@ -6,12 +6,15 @@ from datetime import datetime
 from typing import Optional
 
 try:
+    # 尝试相对导入核心工具函数
     from .utils import (
         get_timestamp, generate_id, get_embedding, normalize_vector, 
         extract_keywords_from_multi_summary, compute_time_decay, ensure_directory_exists, OpenAIClient
     )
+    # 尝试相对导入存储提供者
     from .storage_provider import ChromaStorageProvider
 except ImportError:
+    # 回退到绝对导入
     from utils import (
         get_timestamp, generate_id, get_embedding, normalize_vector, 
         extract_keywords_from_multi_summary, compute_time_decay, ensure_directory_exists, OpenAIClient
@@ -24,6 +27,7 @@ HEAT_BETA = 1.0
 HEAT_GAMMA = 1
 RECENCY_TAU_HOURS = 24 # For R_recency calculation in compute_segment_heat
 
+# 计算会话片段的热度，综合考虑访问次数、交互长度和时间衰减因素
 def compute_segment_heat(session, alpha=HEAT_ALPHA, beta=HEAT_BETA, gamma=HEAT_GAMMA, tau_hours=RECENCY_TAU_HOURS):
     N_visit = session.get("N_visit", 0)
     L_interaction = session.get("L_interaction", 0)
@@ -36,7 +40,9 @@ def compute_segment_heat(session, alpha=HEAT_ALPHA, beta=HEAT_BETA, gamma=HEAT_G
     session["R_recency"] = R_recency # Update session's recency factor
     return alpha * N_visit + beta * L_interaction + gamma * R_recency
 
+# 中期记忆类，使用 ChromaStorageProvider 管理会话和页面
 class MidTermMemory:
+    # 初始化中期记忆
     def __init__(self, 
                  storage_provider: ChromaStorageProvider,
                  user_id: str, 
@@ -52,6 +58,7 @@ class MidTermMemory:
         self.llm_model = llm_model
         
         # Load sessions and other data from the shared storage provider's in-memory metadata
+        # 从存储提供者获取初始状态
         self.sessions: dict = self.storage.get_mid_term_sessions()
         self.access_frequency: defaultdict[str, int] = self.storage.get_access_frequency()
         self.heap: list = self.storage.get_heap_state()
@@ -63,15 +70,18 @@ class MidTermMemory:
         self.embedding_model_name = embedding_model_name
         self.embedding_model_kwargs = embedding_model_kwargs if embedding_model_kwargs is not None else {}
 
+    # 根据 ID 获取页面数据
     def get_page_by_id(self, page_id):
         return self.storage.get_page_by_id(page_id)
 
+    # 更新页面链接关系
     def update_page_connections(self, prev_page_id, next_page_id):
         if prev_page_id:
             self.storage.update_page_connections(prev_page_id, {"next_page": next_page_id})
         if next_page_id:
             self.storage.update_page_connections(next_page_id, {"pre_page": prev_page_id})
 
+    # 基于 LFU 策略驱逐最不常用的会话
     def evict_lfu(self):
         if not self.access_frequency or not self.sessions:
             return
@@ -94,6 +104,7 @@ class MidTermMemory:
         self.rebuild_heap()
         print(f"MidTermMemory: Evicted session {lfu_sid}.")
 
+    # 添加新的会话及其页面
     def add_session(self, summary, details):
         session_id = generate_id("session")
         summary_vec = get_embedding(
@@ -179,6 +190,7 @@ class MidTermMemory:
         self.save()
         return session_id
 
+    # 重构热度堆并保存状态
     def rebuild_heap(self):
         self.heap = []
         for sid, session_data in self.sessions.items():
@@ -189,6 +201,7 @@ class MidTermMemory:
         # Save heap state
         self.storage.save_heap_state(self.heap)
 
+    # 将新页面插入现有最相关的会话或创建新会话
     def insert_pages_into_session(self, summary_for_new_pages, keywords_for_new_pages, pages_to_insert, 
                                   similarity_threshold=0.6, keyword_similarity_alpha=1.0):
         if not self.sessions: # If no existing sessions, just add as a new one
@@ -276,6 +289,7 @@ class MidTermMemory:
             print("MidTermMemory: No suitable session found. Adding as a new session.")
             self.add_session(summary_for_new_pages, pages_to_insert)
 
+    # 搜索中期记忆中的相关会话和页面
     def search_sessions(self, query_text, segment_similarity_threshold=0.1, page_similarity_threshold=0.1, 
                           top_k_sessions=5, keyword_alpha=1.0, recency_tau_search=3600):
         if not self.sessions:
@@ -353,9 +367,10 @@ class MidTermMemory:
         # Sort final results by session_relevance_score
         return sorted(results, key=lambda x: x["session_relevance_score"], reverse=True)
 
+    # 将热度堆和频率统计同步到存储提供者
     def save(self):
         # Save access frequency and heap state
         for session_id, freq in self.access_frequency.items():
             self.storage.update_access_frequency(session_id, freq)
         
-        self.storage.save_heap_state(self.heap) 
+        self.storage.save_heap_state(self.heap)
