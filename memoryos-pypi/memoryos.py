@@ -138,6 +138,12 @@ class Memoryos:
         self.mid_term_heat_threshold = mid_term_heat_threshold
 
     # 如果满足热度阈值，则检查中期记忆中的热点片段并触发画像/知识更新
+    """
+    1. 取出堆顶（热度值最高的堆）
+    2. 取出该堆中没有被分析的页
+    3. 从这些页中提取 画像分析结果、用户私人知识、助手知识
+    4. 将页面标记为已分析，并重置会话的热度贡献因素
+    """
     def _trigger_profile_and_knowledge_update_if_needed(self):
         """
         Checks mid-term memory for hot segments and triggers profile/knowledge update if threshold is met.
@@ -147,7 +153,7 @@ class Memoryos:
         if not self.mid_term_memory.heap:
             return
 
-        # 查看堆顶（热度最高的片段）
+        # 查看堆顶（热度最高的段）
         # Peek at the top of the heap (hottest segment)
         # MidTermMemory heap stores (-H_segment, sid)
         neg_heat, sid = self.mid_term_memory.heap[0] 
@@ -160,7 +166,7 @@ class Memoryos:
                 self.mid_term_memory.rebuild_heap() # Clean up if session is gone
                 return
 
-            # 获取该热点会话中未分析的页面
+            # 获取该段中未分析的页面
             # Get unanalyzed pages from this hot session
             # A page is a dict: {"user_input": ..., "agent_response": ..., "timestamp": ..., "analyzed": False, ...}
             unanalyzed_pages = [p for p in session.get("details", []) if not p.get("analyzed", False)]
@@ -172,24 +178,22 @@ class Memoryos:
                 def task_user_profile_analysis():
                     print("Memoryos: Starting parallel user profile analysis and update...")
                     # 获取现有用户画像
-                    # 获取现有用户画像
                     existing_profile = self.user_long_term_memory.get_raw_user_profile(self.user_id)
                     if not existing_profile or existing_profile.lower() == "none":
                         existing_profile = "No existing profile data."
                     
                     # 直接输出更新后的完整画像
-                    # 直接输出更新后的完整画像
+                    # 使用 llm 提取用户画像
                     return gpt_user_profile_analysis(unanalyzed_pages, self.client, model=self.llm_model, existing_user_profile=existing_profile)
                 
                 def task_knowledge_extraction():
                     print("Memoryos: Starting parallel knowledge extraction...")
+                    # 使用 llm 提取知识，包含 用户隐私数据 和 助手知识
                     return gpt_knowledge_extraction(unanalyzed_pages, self.client, model=self.llm_model)
                 
                 # 使用并行任务执行
-                # 使用并行任务执行                
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     # 提交两个主要任务：画像分析和知识提取
-                    # 提交两个主要任务
                     future_profile = executor.submit(task_user_profile_analysis)
                     future_knowledge = executor.submit(task_knowledge_extraction)
                     
@@ -284,6 +288,21 @@ class Memoryos:
         self._trigger_profile_and_knowledge_update_if_needed()
 
     # 根据用户查询，结合记忆和上下文生成响应
+    """
+    1. 检索上下文信息（主检索方法，并发执行三个检索任务）
+        1. 从中期记忆中匹配相似内容
+            1. 搜索出所有与用户查询文本相似的session（按照topk和阈值），并拆选出堆中相似的page（按照topk和阈值）
+            2. 将每个session中的每个page放到一个堆中
+            3. 返回堆中的每个元素
+        2. 和长期记忆的【知识库内容】进行对比，从中提取出topk个与query最相似的内容
+        3. 和长期记忆的【助手内容】进行对比，从中提取出topk个与query最相似的内容
+    2. 获取所有的短期对话历史
+    3. 格式化检索到的中期记忆页面
+    4. 从长期记忆中提取 用户画像、用户知识、助手知识，
+    5. 如果提供了当前对话的元数据，也进行格式化
+    6. 构建prompt并调用llm
+    7. 将本次交互添加到记忆系统中
+    """
     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
         """
         Generates a response to the user's query, incorporating memory and context.

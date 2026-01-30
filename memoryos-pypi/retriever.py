@@ -32,6 +32,11 @@ class Retriever:
         self.retrieval_queue_capacity = queue_capacity
         # self.retrieval_queue = deque(maxlen=queue_capacity) # This was instance level, but retrieve returns it, so maybe not needed as instance var
 
+    """
+    1. 搜索出所有与用户查询文本相似的session（按照topk和阈值），并拆选出堆中相似的page（按照topk和阈值）
+    2. 将每个session中的每个page放到一个堆中
+    3. 返回堆中的每个元素
+    """
     def _retrieve_mid_term_context(self, user_query, segment_similarity_threshold, page_similarity_threshold, top_k_sessions):
         """并行任务：从中期记忆检索"""
         print("Retriever: Searching mid-term memory...")
@@ -91,6 +96,12 @@ class Retriever:
         return retrieved_knowledge
 
     # 主检索方法，并发执行三个检索任务，并整合结果返回
+    """
+    并行执行三个检索任务
+    1. 从中期记忆中匹配相似内容
+    2. 和长期记忆的【知识库内容】进行对比，从中提取出topk个与query最相似的内容
+    3. 和长期记忆的【助手内容】进行对比，从中提取出topk个与query最相似的内容
+    """
     def retrieve_context(self, user_query: str, 
                          user_id: str, # Needed for profile, can be used for context filtering if desired
                          segment_similarity_threshold=0.1,  # From main_memoybank example

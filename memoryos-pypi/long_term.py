@@ -82,6 +82,11 @@ class LongTermMemory:
         return list(self.assistant_knowledge)
 
     # 在指定的知识队列中搜索与查询最相关的条目
+    """
+    1. 对 query 进行embedding
+    2. 对 knowledge_deque 中的每个元素提取 embedding
+    3. 计算 query 和 每个元素的相似度，超过阈值的留下来
+    """
     def _search_knowledge_deque(self, query, knowledge_deque: deque, threshold=0.1, top_k=5):
         if not knowledge_deque:
             return []
@@ -131,11 +136,17 @@ class LongTermMemory:
         results.sort(key=lambda x: float(np.dot(np.array(x["knowledge_embedding"], dtype=np.float32), query_vec)), reverse=True)
         return results
 
+    """
+    和【知识库内容】进行对比，从中提取出topk个与query最相似的内容
+    """
     def search_user_knowledge(self, query, threshold=0.1, top_k=5):
         results = self._search_knowledge_deque(query, self.knowledge_base, threshold, top_k)
         print(f"LongTermMemory: Searched user knowledge for '{query[:30]}...'. Found {len(results)} matches.")
         return results
 
+    """
+    和【助手内容】进行对比，从中提取出topk个与query最相似的内容
+    """
     def search_assistant_knowledge(self, query, threshold=0.1, top_k=5):
         results = self._search_knowledge_deque(query, self.assistant_knowledge, threshold, top_k)
         print(f"LongTermMemory: Searched assistant knowledge for '{query[:30]}...'. Found {len(results)} matches.")

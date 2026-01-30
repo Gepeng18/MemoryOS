@@ -220,6 +220,14 @@ class MidTermMemory:
         # No save here, it's an internal operation often followed by other ops that save
 
     # 将新页面插入现有会话或创建新会话（基于摘要相似度）
+    """
+    1. 如果没有现有会话，则直接创建
+           具体逻辑和下面的2345相似，只是多了一个步骤：创建了一个session，然后将每一页合并到这个session中
+    2. 计算新摘要的嵌入向量
+    3. 对比每个session的embedding和第一步计算的嵌入向量的语义相似度以及关键词评分，通过加权，计算最相似的段
+    4. 如果最高分超过阈值，将每一页都合并到对应段
+    5. 更新session段的统计信息和热度分数
+    """
     def insert_pages_into_session(self, summary_for_new_pages, keywords_for_new_pages, pages_to_insert, 
                                   similarity_threshold=0.6, keyword_similarity_alpha=1.0):
         # 如果没有现有会话，则直接创建
@@ -271,7 +279,6 @@ class MidTermMemory:
             for page_data in pages_to_insert:
                 page_id = page_data.get("page_id", generate_id("page")) # Use existing or generate new ID
                 
-                # 检查是否已有嵌入向量，避免重复计算
                 # 检查是否已有embedding，避免重复计算
                 if "page_embedding" in page_data and page_data["page_embedding"]:
                     print(f"MidTermMemory: Reusing existing embedding for page {page_id}")
@@ -308,6 +315,8 @@ class MidTermMemory:
                     "page_keywords": page_keywords_current,
                     # analyzed, preloaded flags should be part of page_data if set
                 }
+
+                # 将本页添加到段中
                 target_session["details"].append(processed_page)
                 processed_new_pages.append(processed_page)
 
@@ -325,6 +334,13 @@ class MidTermMemory:
             return self.add_session(summary_for_new_pages, pages_to_insert, keywords_for_new_pages)
 
     # 搜索中期记忆中的会话和页面
+    """
+    1. 计算查询文本的嵌入向量
+    2. 计算查询文本和每个session的summary_embedding的相似度，找到topk的session
+    3. 再针对topk的每个session，依据关键词得分和summary的相似度得分，如果超过阈值，再计算
+        session中的每个page和query的相似度得分，超过阈值就留下
+    4. 如果会话内有匹配页面，则更新会话访问统计并重构堆
+    """
     def search_sessions(self, query_text, segment_similarity_threshold=0.1, page_similarity_threshold=0.1, 
                           top_k_sessions=5, keyword_alpha=1.0, recency_tau_search=3600):
         if not self.sessions:

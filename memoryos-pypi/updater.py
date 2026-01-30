@@ -99,7 +99,21 @@ class Updater:
             self.mid_term_memory.save() # Save mid-term memory after updates
 
     # 处理短期记忆满额后的流转逻辑：将问答对处理为页面并整合进中期记忆
+    """
+    1. 从短期记忆中梳理所有即将移除的问答对
+    2. 如果判断间隔的两个问答对是连续的，则通过 pre_page 字段 串成一个链表
+    3. 使用 llm 针对这些问答对生成多主题摘要，即生成多个summary（我理解这些问答对实际上包含多个主题，每个主题生成一个summary）
+    4. 针对每个summary，
+        4.1 如果没有现有会话，则直接创建
+           具体逻辑和下面的2345相似，只是多了一个步骤：创建了一个session，然后将每一页合并到这个session中
+        4.2 计算新摘要的嵌入向量
+        4.3 对比每个session的embedding和第一步计算的嵌入向量的语义相似度以及关键词评分，通过加权，计算最相似的段
+        4.4 如果最高分超过阈值，将每一页都合并到对应段
+        4.5 更新session段的统计信息和热度分数
+    5. 如果 pre_page 字段存在，则更新另一个page的next_page字段
+    """
     def process_short_term_to_mid_term(self):
+        # evicted_qas 存储了所有本次即将移除的问答对
         evicted_qas = []
         while self.short_term_memory.is_full():
             qa = self.short_term_memory.pop_oldest()
@@ -128,9 +142,11 @@ class Updater:
                 "next_page": None,
                 "meta_info": None
             }
-            
+
+            # 使用llm 判断这两个对话是否是连续的
             is_continuous = check_conversation_continuity(temp_last_page_in_batch, current_page_obj, self.client, model=self.llm_model)
-            
+
+            # 如果是连续的，则生成链表结构
             if is_continuous and temp_last_page_in_batch:
                 current_page_obj["pre_page"] = temp_last_page_in_batch["page_id"]
                 # The actual next_page for temp_last_page_in_batch will be set when it's stored in mid-term
@@ -140,6 +156,8 @@ class Updater:
                 
                 # Meta info generation based on continuity
                 last_meta = temp_last_page_in_batch.get("meta_info")
+
+                # 使用 llm 生成 meta info
                 new_meta = generate_page_meta_info(last_meta, current_page_obj, self.client, model=self.llm_model)
                 current_page_obj["meta_info"] = new_meta
                 # If temp_last_page_in_batch was part of a chain, its meta_info and subsequent ones should update.
@@ -150,6 +168,7 @@ class Updater:
                     self._update_linked_pages_meta_info(temp_last_page_in_batch["page_id"], new_meta)
             else:
                 # Start of a new chain or no previous page
+                # 如果不是连续的，则生成新的页面结构
                 current_page_obj["meta_info"] = generate_page_meta_info(None, current_page_obj, self.client, model=self.llm_model)
             
             current_batch_pages.append(current_page_obj)
@@ -167,7 +186,8 @@ class Updater:
             f"User: {p.get('user_input','')}\nAssistant: {p.get('agent_response','')}" 
             for p in current_batch_pages
         ])
-        
+
+        # 使用 llm 生成多主题摘要
         print("Updater: Generating multi-topic summary for the evicted batch...")
         multi_summary_result = gpt_generate_multi_summary(input_text_for_summary, self.client, model=self.llm_model)
         
